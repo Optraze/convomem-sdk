@@ -1,3 +1,14 @@
+/**
+ * ConvoMem API client implementation.
+ *
+ * This module provides the main {@link ConvoMemClient} class that serves as the
+ * entry point for interacting with the ConvoMem API. It handles authentication,
+ * request construction, retries, and exposes resource-specific sub-clients for
+ * each API domain.
+ *
+ * @module
+ */
+
 import type { ConvoMemConfig } from "./types.ts";
 import { CaptureResource } from "./resources/capture.ts";
 import { CustomersResource } from "./resources/customers.ts";
@@ -11,6 +22,38 @@ import { WebhooksResource } from "./resources/webhooks.ts";
 
 const DEFAULT_BASE_URL = "https://api.convomem.com/api/v1";
 
+/**
+ * The primary client for interacting with the ConvoMem API.
+ *
+ * Provides authenticated access to all ConvoMem resources including customers,
+ * memories, conversations, capture, embed, entities, organizations, insights,
+ * and webhooks.
+ *
+ * @example
+ * ```ts
+ * import { ConvoMemClient } from "convomem";
+ *
+ * const client = new ConvoMemClient({ apiKey: "your-api-key" });
+ *
+ * // List customers
+ * const customers = await client.customers.list();
+ *
+ * // Add a memory
+ * const memory = await client.memories.add({
+ *   customerId: "cust_123",
+ *   content: "User prefers dark mode",
+ * });
+ *
+ * // Capture a conversation
+ * const capture = await client.capture.capture({
+ *   conversationId: "conv_456",
+ *   messages: [
+ *     { role: "user", content: "Hello!" },
+ *     { role: "assistant", content: "Hi there!" },
+ *   ],
+ * });
+ * ```
+ */
 export class ConvoMemClient {
   readonly #apiKey: string;
   readonly #baseUrl: string;
@@ -19,16 +62,44 @@ export class ConvoMemClient {
   readonly #maxRetries: number;
   readonly #retryDelay: number;
 
+  /** Resource for capturing and processing conversations. */
   readonly capture: CaptureResource;
+
+  /** Resource for managing customers. */
   readonly customers: CustomersResource;
+
+  /** Resource for managing memories associated with customers. */
   readonly memories: MemoriesResource;
+
+  /** Resource for managing conversations. */
   readonly conversations: ConversationsResource;
+
+  /** Resource for generating and managing embed tokens. */
   readonly embed: EmbedResource;
+
+  /** Resource for managing entities and entity graphs. */
   readonly entities: EntitiesResource;
+
+  /** Resource for managing organizations and organization settings. */
   readonly orgs: OrgsResource;
+
+  /** Resource for accessing insights and analytics dashboards. */
   readonly insights: InsightsResource;
+
+  /** Resource for managing webhook subscriptions. */
   readonly webhooks: WebhooksResource;
 
+  /**
+   * Creates a new ConvoMem client instance.
+   *
+   * @param config - Configuration options for the client.
+   * @param config.apiKey - Your ConvoMem API key. Required for authentication.
+   * @param config.baseUrl - Base URL for the API. Defaults to `https://api.convomem.com/api/v1`.
+   * @param config.fetch - Custom fetch implementation. Defaults to the global `fetch`.
+   * @param config.timeout - Request timeout in milliseconds. Defaults to `30000`.
+   * @param config.maxRetries - Maximum number of retry attempts for failed requests (5xx or 429). Defaults to `0`.
+   * @param config.retryDelay - Base delay in milliseconds between retries. Doubles with each attempt. Defaults to `1000`.
+   */
   constructor(config: ConvoMemConfig) {
     this.#apiKey = config.apiKey;
     this.#baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
