@@ -26,3 +26,12 @@ impl From<reqwest::Error> for ConvoMemError {
         Self::Http(e)
     }
 }
+
+impl From<serde_json::Error> for ConvoMemError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Api {
+            status: 0,
+            message: format!("JSON parse error: {e}"),
+        }
+    }
+}

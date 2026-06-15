@@ -5,7 +5,7 @@ import { ConvoMemClient } from "../../mod.ts";
 
 // Load .env file into Deno.env
 try {
-  const content = await Deno.readTextFile(".env");
+  const content = await Deno.readTextFile("../.env");
   load(parse(content));
 } catch {
   // .env file may not exist; rely on environment variables

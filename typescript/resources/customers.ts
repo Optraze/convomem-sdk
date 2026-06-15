@@ -162,11 +162,11 @@ export class CustomersResource {
     if (opts?.limit) params.limit = String(opts.limit);
 
     const res = await this.#client.request<
-      { data: Customer[]; page: number; limit: number; total: number }
+      { customers: Customer[]; page: number; limit: number; total: number }
     >("GET", "/customers", { params, signal: opts?.signal });
 
     return {
-      customers: res.data,
+      customers: res.customers,
       page: res.page,
       limit: res.limit,
       total: res.total,

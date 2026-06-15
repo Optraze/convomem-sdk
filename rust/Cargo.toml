@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/sayeed205/convomem-sdk"
 
 [dependencies]
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -15,3 +15,25 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
+dotenvy = "0.15"
+
+[profile.dev]
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+
+[tool.nextest.profile.default]
+slow-timeout = { period = "30s", terminate-after = 2 }
+retries = 0
+test-threads = 4
+
+[tool.nextest.profile.ci]
+retries = 2
+test-threads = 2

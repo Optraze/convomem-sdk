@@ -5,6 +5,7 @@ use crate::types::*;
 
 const DEFAULT_BASE_URL: &str = "https://api.convomem.com/api/v1";
 
+#[derive(Debug)]
 pub struct ConvoMemClient {
     http: reqwest::Client,
     base_url: String,
@@ -55,7 +56,11 @@ impl ConvoMemClient {
             });
         }
 
-        let data = res.json::<T>().await?;
+        let text = res.text().await?;
+        if text.is_empty() {
+            return serde_json::from_str("{}").map_err(|e| e.into());
+        }
+        let data = serde_json::from_str(&text)?;
         Ok(data)
     }
 
@@ -229,6 +234,342 @@ impl ConvoMemClient {
         let path = format!("/embed/handoff?token={token}");
         self.request(reqwest::Method::GET, &path, None::<&()>).await
     }
+    // ── Entities ─────────────────────────────────────────
+
+    pub async fn list_entities(
+        &self,
+        page: Option<u32>,
+        limit: Option<u32>,
+        r#type: Option<&str>,
+    ) -> Result<EntityListResponse> {
+        let mut params = vec![];
+        if let Some(p) = page { params.push(format!("page={p}")); }
+        if let Some(l) = limit { params.push(format!("limit={l}")); }
+        if let Some(t) = r#type { params.push(format!("type={t}")); }
+        let path = if params.is_empty() {
+            "/entities".to_string()
+        } else {
+            format!("/entities?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn get_entity(&self, entity_id: &str) -> Result<Entity> {
+        let path = format!("/entities/{entity_id}");
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn search_entities(&self, params: &EntitySearchParams) -> Result<EntityListResponse> {
+        let mut query = vec![format!("query={}", params.query)];
+        if let Some(ref t) = params.r#type { query.push(format!("type={t}")); }
+        if let Some(l) = params.limit { query.push(format!("limit={l}")); }
+        let path = format!("/entities/search?{}", query.join("&"));
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn get_entity_graph(
+        &self,
+        entity_id: Option<&str>,
+        depth: Option<u32>,
+    ) -> Result<EntityGraphResponse> {
+        let mut params = vec![];
+        if let Some(e) = entity_id { params.push(format!("entityId={e}")); }
+        if let Some(d) = depth { params.push(format!("depth={d}")); }
+        let path = if params.is_empty() {
+            "/entities/graph".to_string()
+        } else {
+            format!("/entities/graph?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn delete_entity(&self, entity_id: &str) -> Result<()> {
+        let path = format!("/entities/{entity_id}");
+        self.request::<serde_json::Value>(reqwest::Method::DELETE, &path, None::<&()>)
+            .await?;
+        Ok(())
+    }
+
+    // ── Orgs ──────────────────────────────────────────────
+
+    pub async fn create_org(&self, req: &OrgCreateRequest) -> Result<Org> {
+        self.request(reqwest::Method::POST, "/orgs", Some(req)).await
+    }
+
+    pub async fn get_org(&self, org_id: &str) -> Result<Org> {
+        let path = format!("/orgs/{org_id}");
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn update_org(&self, org_id: &str, req: &OrgUpdateRequest) -> Result<Org> {
+        let path = format!("/orgs/{org_id}");
+        self.request(reqwest::Method::PATCH, &path, Some(req)).await
+    }
+
+    pub async fn add_org_member(&self, org_id: &str, req: &OrgMemberAddRequest) -> Result<OrgMember> {
+        let path = format!("/orgs/{org_id}/members");
+        self.request(reqwest::Method::POST, &path, Some(req)).await
+    }
+
+    pub async fn get_org_member(&self, org_id: &str, uid: &str) -> Result<OrgMember> {
+        let path = format!("/orgs/{org_id}/members/{uid}");
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn update_org_member(
+        &self,
+        org_id: &str,
+        uid: &str,
+        req: &OrgMemberUpdateRequest,
+    ) -> Result<OrgMember> {
+        let path = format!("/orgs/{org_id}/members/{uid}");
+        self.request(reqwest::Method::PATCH, &path, Some(req)).await
+    }
+
+    pub async fn remove_org_member(&self, org_id: &str, uid: &str) -> Result<()> {
+        let path = format!("/orgs/{org_id}/members/{uid}");
+        self.request::<serde_json::Value>(reqwest::Method::DELETE, &path, None::<&()>)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn create_org_api_key(
+        &self,
+        org_id: &str,
+        req: Option<&OrgApiKeyCreateRequest>,
+    ) -> Result<OrgApiKey> {
+        let path = format!("/orgs/{org_id}/api-keys");
+        self.request(reqwest::Method::POST, &path, req).await
+    }
+
+    pub async fn list_org_api_keys(&self, org_id: &str) -> Result<Vec<OrgApiKey>> {
+        let path = format!("/orgs/{org_id}/api-keys");
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn delete_org_api_key(&self, org_id: &str, key_id: &str) -> Result<()> {
+        let path = format!("/orgs/{org_id}/api-keys/{key_id}");
+        self.request::<serde_json::Value>(reqwest::Method::DELETE, &path, None::<&()>)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_org_audit_logs(
+        &self,
+        org_id: &str,
+        page: Option<u32>,
+        limit: Option<u32>,
+    ) -> Result<Vec<OrgAuditLog>> {
+        let mut params = vec![];
+        if let Some(p) = page { params.push(format!("page={p}")); }
+        if let Some(l) = limit { params.push(format!("limit={l}")); }
+        let path = if params.is_empty() {
+            format!("/orgs/{org_id}/audit-logs")
+        } else {
+            format!("/orgs/{org_id}/audit-logs?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    // ── Insights ──────────────────────────────────────────
+
+    pub async fn insights_dashboard(&self) -> Result<InsightsDashboard> {
+        self.request(reqwest::Method::GET, "/insights/dashboard", None::<&()>)
+            .await
+    }
+
+    pub async fn buying_signals(
+        &self,
+        customer_id: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Vec<BuyingSignal>> {
+        let mut params = vec![];
+        if let Some(c) = customer_id { params.push(format!("customerId={c}")); }
+        if let Some(l) = limit { params.push(format!("limit={l}")); }
+        let path = if params.is_empty() {
+            "/insights/buying-signals".to_string()
+        } else {
+            format!("/insights/buying-signals?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn sentiment_time_series(
+        &self,
+        customer_id: Option<&str>,
+        days: Option<u32>,
+    ) -> Result<Vec<SentimentPoint>> {
+        let mut params = vec![];
+        if let Some(c) = customer_id { params.push(format!("customerId={c}")); }
+        if let Some(d) = days { params.push(format!("days={d}")); }
+        let path = if params.is_empty() {
+            "/insights/sentiment".to_string()
+        } else {
+            format!("/insights/sentiment?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn complaints(
+        &self,
+        page: Option<u32>,
+        limit: Option<u32>,
+    ) -> Result<Vec<Complaint>> {
+        let mut params = vec![];
+        if let Some(p) = page { params.push(format!("page={p}")); }
+        if let Some(l) = limit { params.push(format!("limit={l}")); }
+        let path = if params.is_empty() {
+            "/insights/complaints".to_string()
+        } else {
+            format!("/insights/complaints?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn get_complaint(&self, complaint_id: &str) -> Result<Complaint> {
+        let path = format!("/insights/complaints/{complaint_id}");
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn frequent_issues(&self) -> Result<Vec<FrequentIssue>> {
+        self.request(reqwest::Method::GET, "/insights/frequent-issues", None::<&()>)
+            .await
+    }
+
+    pub async fn memory_in_action(&self, limit: Option<u32>) -> Result<Vec<MemoryInAction>> {
+        let path = match limit {
+            Some(l) => format!("/insights/memory-in-action?limit={l}"),
+            None => "/insights/memory-in-action".to_string(),
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn channel_breakdown(&self) -> Result<Vec<ChannelBreakdown>> {
+        self.request(reqwest::Method::GET, "/insights/channels", None::<&()>)
+            .await
+    }
+
+    pub async fn pipeline_stats(&self) -> Result<PipelineStats> {
+        self.request(reqwest::Method::GET, "/insights/pipeline-stats", None::<&()>)
+            .await
+    }
+
+    pub async fn entity_graph_stats(&self) -> Result<serde_json::Value> {
+        self.request(reqwest::Method::GET, "/insights/entity-graph/stats", None::<&()>)
+            .await
+    }
+
+    pub async fn insights_entity_graph(
+        &self,
+        entity_id: Option<&str>,
+        depth: Option<u32>,
+    ) -> Result<EntityGraphResponse> {
+        let mut params = vec![];
+        if let Some(e) = entity_id { params.push(format!("entityId={e}")); }
+        if let Some(d) = depth { params.push(format!("depth={d}")); }
+        let path = if params.is_empty() {
+            "/insights/entity-graph".to_string()
+        } else {
+            format!("/insights/entity-graph?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn recent_conversations(&self, limit: Option<u32>) -> Result<Vec<Conversation>> {
+        let path = match limit {
+            Some(l) => format!("/insights/recent-conversations?limit={l}"),
+            None => "/insights/recent-conversations".to_string(),
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn list_all_conversations(
+        &self,
+        page: Option<u32>,
+        limit: Option<u32>,
+    ) -> Result<ConversationListResponse> {
+        let mut params = vec![];
+        if let Some(p) = page { params.push(format!("page={p}")); }
+        if let Some(l) = limit { params.push(format!("limit={l}")); }
+        let path = if params.is_empty() {
+            "/insights/conversations".to_string()
+        } else {
+            format!("/insights/conversations?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn list_insights(
+        &self,
+        page: Option<u32>,
+        limit: Option<u32>,
+        r#type: Option<&str>,
+    ) -> Result<InsightListResponse> {
+        let mut params = vec![];
+        if let Some(p) = page { params.push(format!("page={p}")); }
+        if let Some(l) = limit { params.push(format!("limit={l}")); }
+        if let Some(t) = r#type { params.push(format!("type={t}")); }
+        let path = if params.is_empty() {
+            "/insights".to_string()
+        } else {
+            format!("/insights?{}", params.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn act_on_insight(&self, insight_id: &str, req: &InsightActionRequest) -> Result<()> {
+        let path = format!("/insights/{insight_id}/action");
+        self.request::<serde_json::Value>(reqwest::Method::POST, &path, Some(req))
+            .await?;
+        Ok(())
+    }
+
+    // ── Webhooks ──────────────────────────────────────────
+
+    pub async fn create_webhook(&self, org_id: &str, req: &WebhookCreateRequest) -> Result<Webhook> {
+        let path = format!("/orgs/{org_id}/webhooks");
+        self.request(reqwest::Method::POST, &path, Some(req)).await
+    }
+
+    pub async fn list_webhooks(&self, org_id: &str) -> Result<Vec<Webhook>> {
+        let path = format!("/orgs/{org_id}/webhooks");
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn update_webhook(
+        &self,
+        org_id: &str,
+        webhook_id: &str,
+        req: &WebhookUpdateRequest,
+    ) -> Result<Webhook> {
+        let path = format!("/orgs/{org_id}/webhooks/{webhook_id}");
+        self.request(reqwest::Method::PATCH, &path, Some(req)).await
+    }
+
+    pub async fn delete_webhook(&self, org_id: &str, webhook_id: &str) -> Result<()> {
+        let path = format!("/orgs/{org_id}/webhooks/{webhook_id}");
+        self.request::<serde_json::Value>(reqwest::Method::DELETE, &path, None::<&()>)
+            .await?;
+        Ok(())
+    }
+
+    // ── Missing Memory Methods ────────────────────────────
+
+    pub async fn add_memory(&self, customer_id: &str, req: &MemoryAddRequest) -> Result<Memory> {
+        let path = format!("/customers/{customer_id}/memories");
+        self.request(reqwest::Method::POST, &path, Some(req)).await
+    }
+
+    pub async fn get_memory(&self, customer_id: &str, mem_id: &str) -> Result<Memory> {
+        let path = format!("/customers/{customer_id}/memories/{mem_id}");
+        self.request(reqwest::Method::GET, &path, None::<&()>).await
+    }
+
+    pub async fn lookup_feedback(&self, req: &FeedbackLookupRequest) -> Result<FeedbackLookupResponse> {
+        self.request(reqwest::Method::POST, "/memories/lookup-feedback", Some(req))
+            .await
+    }
+
 }
 
 // ── Builder ─────────────────────────────────────────────

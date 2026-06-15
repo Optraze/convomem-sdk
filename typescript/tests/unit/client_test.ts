@@ -155,7 +155,7 @@ describe("ConvoMemClient Unit", () => {
 
     it("sends GET /customers with pagination", async () => {
       const mock = mockFetch({
-        data: [{ id: "cust-1" }],
+        customers: [{ id: "cust-1" }],
         page: 1,
         limit: 10,
         total: 1,
@@ -191,7 +191,7 @@ describe("ConvoMemClient Unit", () => {
 
     it("sends GET /customers/{id}/memories", async () => {
       const mock = mockFetch({
-        data: [{ id: "mem-1", fact: "Prefers morning deliveries" }],
+        memories: [{ id: "mem-1", fact: "Prefers morning deliveries" }],
         page: 1,
         limit: 20,
         total: 1,
@@ -268,7 +268,7 @@ describe("ConvoMemClient Unit", () => {
 
     it("sends GET /customers/{id}/conversations", async () => {
       const mock = mockFetch({
-        data: [{ id: "conv-1", channel: "CHAT", status: "ACTIVE" }],
+        conversations: [{ id: "conv-1", channel: "CHAT", status: "ACTIVE" }],
         page: 1,
         limit: 20,
         total: 1,

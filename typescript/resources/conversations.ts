@@ -105,14 +105,14 @@ export class ConversationsResource {
     if (opts?.limit) params.limit = String(opts.limit);
 
     const res = await this.#client.request<
-      { data: Conversation[]; page: number; limit: number; total: number }
+      { conversations: Conversation[]; page: number; limit: number; total: number }
     >("GET", `/customers/${customerId}/conversations`, {
       params,
       signal: opts?.signal,
     });
 
     return {
-      conversations: res.data,
+      conversations: res.conversations,
       page: res.page,
       limit: res.limit,
       total: res.total,

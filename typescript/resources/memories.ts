@@ -198,14 +198,14 @@ export class MemoriesResource {
     if (opts?.limit) params.limit = String(opts.limit);
 
     const res = await this.#client.request<
-      { data: Memory[]; page: number; limit: number; total: number }
+      { memories: Memory[]; page: number; limit: number; total: number }
     >("GET", `/customers/${customerId}/memories`, {
       params,
       signal: opts?.signal,
     });
 
     return {
-      memories: res.data,
+      memories: res.memories,
       page: res.page,
       limit: res.limit,
       total: res.total,
