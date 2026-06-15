@@ -14,7 +14,7 @@ export class CaptureResource {
    * enqueues the message for memory extraction, and returns session context.
    */
   async capture(request: CaptureRequest): Promise<CaptureResponse> {
-    return this.#client.request<CaptureResponse>("POST", "/capture", {
+    return await this.#client.request<CaptureResponse>("POST", "/capture", {
       body: request,
     });
   }

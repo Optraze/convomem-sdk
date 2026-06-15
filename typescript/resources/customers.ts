@@ -1,10 +1,10 @@
 import type { ConvoMemClient } from "../client.ts";
 import type {
+  Customer,
+  CustomerCreateRequest,
+  CustomerListResponse,
   CustomerLookupParams,
   CustomerLookupResponse,
-  CustomerCreateRequest,
-  Customer,
-  CustomerListResponse,
   CustomerUpdateRequest,
   HandoffParams,
   HandoffResponse,
@@ -30,7 +30,7 @@ export class CustomersResource {
     if (params.autoCreate) query.autoCreate = params.autoCreate;
     if (params.userName) query.userName = params.userName;
 
-    return this.#client.request<CustomerLookupResponse>(
+    return await this.#client.request<CustomerLookupResponse>(
       "GET",
       "/customers/lookup",
       { params: query },
@@ -41,7 +41,7 @@ export class CustomersResource {
    * Create a new customer.
    */
   async create(request: CustomerCreateRequest): Promise<Customer> {
-    return this.#client.request<Customer>("POST", "/customers", {
+    return await this.#client.request<Customer>("POST", "/customers", {
       body: request,
     });
   }
@@ -57,23 +57,27 @@ export class CustomersResource {
     if (opts?.page) params.page = String(opts.page);
     if (opts?.limit) params.limit = String(opts.limit);
 
-    return this.#client.request<CustomerListResponse>("GET", "/customers", {
-      params,
-    });
+    return await this.#client.request<CustomerListResponse>(
+      "GET",
+      "/customers",
+      {
+        params,
+      },
+    );
   }
 
   /**
    * Get a single customer by ID.
    */
   async get(id: string): Promise<Customer> {
-    return this.#client.request<Customer>("GET", `/customers/${id}`);
+    return await this.#client.request<Customer>("GET", `/customers/${id}`);
   }
 
   /**
    * Update a customer.
    */
   async update(id: string, request: CustomerUpdateRequest): Promise<Customer> {
-    return this.#client.request<Customer>("PATCH", `/customers/${id}`, {
+    return await this.#client.request<Customer>("PATCH", `/customers/${id}`, {
       body: request,
     });
   }
@@ -82,7 +86,7 @@ export class CustomersResource {
    * Delete a customer permanently.
    */
   async delete(id: string): Promise<void> {
-    return this.#client.request<void>("DELETE", `/customers/${id}`);
+    return await this.#client.request<void>("DELETE", `/customers/${id}`);
   }
 
   /**
@@ -97,9 +101,13 @@ export class CustomersResource {
     if (params.narrative) query.narrative = params.narrative;
     if (params.fresh) query.fresh = params.fresh;
 
-    return this.#client.request<HandoffResponse>("GET", "/customers/handoff", {
-      params: query,
-    });
+    return await this.#client.request<HandoffResponse>(
+      "GET",
+      "/customers/handoff",
+      {
+        params: query,
+      },
+    );
   }
 
   /**
@@ -113,7 +121,7 @@ export class CustomersResource {
     if (opts?.narrative) params.narrative = opts.narrative;
     if (opts?.fresh) params.fresh = opts.fresh;
 
-    return this.#client.request<HandoffResponse>(
+    return await this.#client.request<HandoffResponse>(
       "GET",
       `/customers/${id}/handoff`,
       { params },

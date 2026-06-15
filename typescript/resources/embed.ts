@@ -12,16 +12,20 @@ export class EmbedResource {
    * Mint a short-lived embed token for the agent handoff panel.
    */
   async createToken(request: EmbedTokenRequest): Promise<EmbedTokenResponse> {
-    return this.#client.request<EmbedTokenResponse>("POST", "/embed/tokens", {
-      body: request,
-    });
+    return await this.#client.request<EmbedTokenResponse>(
+      "POST",
+      "/embed/tokens",
+      {
+        body: request,
+      },
+    );
   }
 
   /**
    * Fetch handoff context with an embed token (public endpoint).
    */
   async getHandoff(token: string): Promise<unknown> {
-    return this.#client.request("GET", "/embed/handoff", {
+    return await this.#client.request("GET", "/embed/handoff", {
       params: { token },
     });
   }

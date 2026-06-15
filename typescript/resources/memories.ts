@@ -1,9 +1,13 @@
 import type { ConvoMemClient } from "../client.ts";
 import type {
-  MemoryIngestRequest,
-  MemoryLookupParams,
+  FeedbackLookupRequest,
+  FeedbackLookupResponse,
+  Memory,
+  MemoryAddRequest,
   MemoryContext,
+  MemoryIngestRequest,
   MemoryListResponse,
+  MemoryLookupParams,
   MemoryUpdateRequest,
 } from "../types.ts";
 
@@ -21,7 +25,7 @@ export class MemoriesResource {
     customerId: string,
     request: MemoryIngestRequest,
   ): Promise<{ captureId: string; status: "queued" }> {
-    return this.#client.request(
+    return await this.#client.request(
       "POST",
       `/customers/${customerId}/memories/ingest`,
       { body: request },
@@ -35,7 +39,7 @@ export class MemoriesResource {
     customerId: string,
     params: MemoryLookupParams,
   ): Promise<MemoryContext> {
-    return this.#client.request<MemoryContext>(
+    return await this.#client.request<MemoryContext>(
       "GET",
       `/customers/${customerId}/memories/lookup`,
       { params: { topic: params.topic } },
@@ -57,7 +61,7 @@ export class MemoriesResource {
     if (params.email) query.email = params.email;
     if (params.externalId) query.externalId = params.externalId;
 
-    return this.#client.request<MemoryContext>(
+    return await this.#client.request<MemoryContext>(
       "GET",
       "/customers/memories/lookup",
       { params: query },
@@ -75,7 +79,7 @@ export class MemoriesResource {
     if (opts?.page) params.page = String(opts.page);
     if (opts?.limit) params.limit = String(opts.limit);
 
-    return this.#client.request<MemoryListResponse>(
+    return await this.#client.request<MemoryListResponse>(
       "GET",
       `/customers/${customerId}/memories`,
       { params },
@@ -90,7 +94,7 @@ export class MemoriesResource {
     memId: string,
     request: MemoryUpdateRequest,
   ): Promise<void> {
-    return this.#client.request(
+    return await this.#client.request(
       "PATCH",
       `/customers/${customerId}/memories/${memId}`,
       { body: request },
@@ -101,9 +105,43 @@ export class MemoriesResource {
    * Delete a customer memory.
    */
   async delete(customerId: string, memId: string): Promise<void> {
-    return this.#client.request(
+    return await this.#client.request(
       "DELETE",
       `/customers/${customerId}/memories/${memId}`,
+    );
+  }
+
+  /**
+   * Add a memory directly for a customer.
+   */
+  async add(customerId: string, request: MemoryAddRequest): Promise<Memory> {
+    return await this.#client.request<Memory>(
+      "POST",
+      `/customers/${customerId}/memories`,
+      { body: request },
+    );
+  }
+
+  /**
+   * Get a specific memory by ID.
+   */
+  async get(customerId: string, memId: string): Promise<Memory> {
+    return await this.#client.request<Memory>(
+      "GET",
+      `/customers/${customerId}/memories/${memId}`,
+    );
+  }
+
+  /**
+   * Look up feedback for memories.
+   */
+  async lookupFeedback(
+    params: FeedbackLookupRequest,
+  ): Promise<FeedbackLookupResponse> {
+    return await this.#client.request<FeedbackLookupResponse>(
+      "POST",
+      "/memories/lookup-feedback",
+      { body: params },
     );
   }
 }

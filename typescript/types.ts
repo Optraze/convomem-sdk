@@ -7,6 +7,14 @@ export interface ConvoMemConfig {
   baseUrl?: string;
   /** Custom fetch implementation (for testing or Deno Deploy) */
   fetch?: typeof globalThis.fetch;
+  /** Organization ID (for org-scoped operations) */
+  orgId?: string;
+  /** Request timeout in milliseconds (default: 30000) */
+  timeout?: number;
+  /** Maximum number of retries for failed requests (default: 0) */
+  maxRetries?: number;
+  /** Delay between retries in milliseconds (default: 1000) */
+  retryDelay?: number;
 }
 
 // ── Capture ─────────────────────────────────────────────
@@ -71,17 +79,22 @@ export interface CustomerCreateRequest {
 
 export interface Customer {
   id: string;
+  orgId?: string;
   name?: string;
   email?: string;
   phone?: string;
   externalId?: string;
   metadata?: Record<string, unknown>;
+  lastSentiment?: number | null;
+  memoryCount?: number;
+  conversationCount?: number;
+  lastContactAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface CustomerListResponse {
-  data: Customer[];
+  customers: Customer[];
   page: number;
   limit: number;
   total: number;
@@ -114,6 +127,7 @@ export interface HandoffResponse {
   sentimentTrend: {
     direction: "declining" | "improving" | "stable" | "unknown";
     current: number | null;
+    points?: Array<{ timestamp: string; score: number }>;
   };
   openIssue: {
     isOpen: boolean;
@@ -122,6 +136,8 @@ export interface HandoffResponse {
   };
   narrative: string | null;
   narrativeSource: "llm" | "fallback" | "skipped";
+  generatedAt?: string;
+  cached?: boolean;
 }
 
 export interface JourneyEntry {
@@ -132,12 +148,17 @@ export interface JourneyEntry {
   outcome: string | null;
   sentiment: number | null;
   startedAt?: string;
+  endedAt?: string | null;
+  messagesCount?: number;
 }
 
 export interface KeyMemory {
+  id?: string;
   content: string;
   category: string;
   channelSource: string | null;
+  memoryType?: string;
+  sentiment?: string | null;
 }
 
 // ── Memories ────────────────────────────────────────────
@@ -153,7 +174,15 @@ export interface Memory {
   score?: number;
   sentiment?: string | null;
   sourceContext?: string | null;
+  topicKey?: string;
+  durability?: number;
+  confidence?: number;
+  confirmationCount?: number;
+  isSensitive?: boolean;
+  platform?: string;
+  searchTags?: string[];
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MemoryIngestRequest {
@@ -175,7 +204,7 @@ export interface MemoryContext {
 }
 
 export interface MemoryListResponse {
-  data: Memory[];
+  memories: Memory[];
   page: number;
   limit: number;
   total: number;
@@ -185,6 +214,27 @@ export interface MemoryUpdateRequest {
   fact?: string;
   category?: string;
   importance?: number;
+}
+
+export interface MemoryAddRequest {
+  fact: string;
+  category?: string;
+  importance?: number;
+  memoryType?: string;
+}
+
+export interface FeedbackLookupRequest {
+  customerId?: string;
+  phone?: string;
+  email?: string;
+  externalId?: string;
+  topic?: string;
+}
+
+export interface FeedbackLookupResponse {
+  found: boolean;
+  feedback?: Record<string, unknown>;
+  memories?: Memory[];
 }
 
 // ── Conversations ───────────────────────────────────────
@@ -199,7 +249,7 @@ export interface Conversation {
 }
 
 export interface ConversationListResponse {
-  data: Conversation[];
+  conversations: Conversation[];
   page: number;
   limit: number;
   total: number;
@@ -227,4 +277,203 @@ export interface EmbedTokenResponse {
   token: string;
   expiresIn: number;
   scope: string;
+}
+
+// ── Entities ────────────────────────────────────────────
+
+export interface Entity {
+  id: string;
+  orgId?: string;
+  name: string;
+  type: string;
+  properties?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EntityListResponse {
+  entities: Entity[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+export interface EntitySearchParams {
+  query: string;
+  type?: string;
+  limit?: number;
+}
+
+export interface EntityGraphResponse {
+  nodes: Array<{ id: string; name: string; type: string }>;
+  edges: Array<{ source: string; target: string; relationship: string }>;
+}
+
+// ── Orgs ────────────────────────────────────────────────
+
+export interface Org {
+  id: string;
+  name: string;
+  plan?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OrgCreateRequest {
+  name: string;
+  plan?: string;
+}
+
+export interface OrgUpdateRequest {
+  name?: string;
+  plan?: string;
+}
+
+export interface OrgMember {
+  uid: string;
+  role: "owner" | "admin" | "member" | "viewer";
+  joinedAt?: string;
+}
+
+export interface OrgMemberAddRequest {
+  uid: string;
+  role: "owner" | "admin" | "member" | "viewer";
+}
+
+export interface OrgMemberUpdateRequest {
+  role: "owner" | "admin" | "member" | "viewer";
+}
+
+export interface OrgApiKey {
+  id: string;
+  name?: string;
+  key?: string;
+  prefix?: string;
+  createdAt?: string;
+  lastUsedAt?: string | null;
+}
+
+export interface OrgApiKeyCreateRequest {
+  name?: string;
+}
+
+export interface OrgAuditLog {
+  id: string;
+  action: string;
+  actor?: string;
+  target?: string;
+  details?: Record<string, unknown>;
+  createdAt?: string;
+}
+
+// ── Insights ────────────────────────────────────────────
+
+export interface InsightsDashboard {
+  totalCustomers?: number;
+  totalMemories?: number;
+  totalConversations?: number;
+  activeConversations?: number;
+  avgSentiment?: number;
+  [key: string]: unknown;
+}
+
+export interface BuyingSignal {
+  id: string;
+  customerId?: string;
+  signal: string;
+  confidence?: number;
+  detectedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface SentimentPoint {
+  timestamp: string;
+  score: number;
+  count?: number;
+}
+
+export interface Complaint {
+  id: string;
+  customerId?: string;
+  content: string;
+  category?: string;
+  severity?: string;
+  status?: string;
+  createdAt?: string;
+  [key: string]: unknown;
+}
+
+export interface FrequentIssue {
+  issue: string;
+  count: number;
+  percentage?: number;
+}
+
+export interface MemoryInAction {
+  id: string;
+  fact: string;
+  usedInConversation?: string;
+  impact?: string;
+  [key: string]: unknown;
+}
+
+export interface ChannelBreakdown {
+  channel: string;
+  count: number;
+  percentage?: number;
+}
+
+export interface PipelineStats {
+  totalLeads?: number;
+  qualifiedLeads?: number;
+  conversionRate?: number;
+  [key: string]: unknown;
+}
+
+export interface Insight {
+  id: string;
+  type: string;
+  title?: string;
+  summary?: string;
+  data?: Record<string, unknown>;
+  createdAt?: string;
+  [key: string]: unknown;
+}
+
+export interface InsightListResponse {
+  insights: Insight[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+export interface InsightActionRequest {
+  action: string;
+  notes?: string;
+}
+
+// ── Webhooks ────────────────────────────────────────────
+
+export interface Webhook {
+  id: string;
+  orgId?: string;
+  url: string;
+  events?: string[];
+  secret?: string;
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface WebhookCreateRequest {
+  url: string;
+  events?: string[];
+  secret?: string;
+}
+
+export interface WebhookUpdateRequest {
+  url?: string;
+  events?: string[];
+  secret?: string;
+  active?: boolean;
 }

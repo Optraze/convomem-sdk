@@ -1,9 +1,9 @@
 import type { ConvoMemClient } from "../client.ts";
 import type {
   Conversation,
-  ConversationListResponse,
   ConversationEndRequest,
   ConversationEscalateRequest,
+  ConversationListResponse,
 } from "../types.ts";
 
 export class ConversationsResource {
@@ -20,7 +20,7 @@ export class ConversationsResource {
     customerId: string,
     channel: "VOICE" | "CHAT" | "SMS" | "EMAIL",
   ): Promise<Conversation> {
-    return this.#client.request<Conversation>(
+    return await this.#client.request<Conversation>(
       "POST",
       `/customers/${customerId}/conversations`,
       { body: { channel } },
@@ -38,7 +38,7 @@ export class ConversationsResource {
     if (opts?.page) params.page = String(opts.page);
     if (opts?.limit) params.limit = String(opts.limit);
 
-    return this.#client.request<ConversationListResponse>(
+    return await this.#client.request<ConversationListResponse>(
       "GET",
       `/customers/${customerId}/conversations`,
       { params },
@@ -53,7 +53,7 @@ export class ConversationsResource {
     conversationId: string,
     request?: ConversationEndRequest,
   ): Promise<Conversation> {
-    return this.#client.request<Conversation>(
+    return await this.#client.request<Conversation>(
       "PATCH",
       `/customers/${customerId}/conversations/${conversationId}`,
       { body: request },
@@ -68,7 +68,7 @@ export class ConversationsResource {
     conversationId: string;
     outcome?: string;
   }): Promise<void> {
-    return this.#client.request("POST", "/customers/conversations/end", {
+    return await this.#client.request("POST", "/customers/conversations/end", {
       body: request,
     });
   }
@@ -81,7 +81,7 @@ export class ConversationsResource {
     conversationId: string,
     request?: ConversationEscalateRequest,
   ): Promise<Conversation> {
-    return this.#client.request<Conversation>(
+    return await this.#client.request<Conversation>(
       "PATCH",
       `/customers/${customerId}/conversations/${conversationId}/escalate`,
       { body: request },
@@ -96,7 +96,7 @@ export class ConversationsResource {
     conversationId: string;
     reason?: string;
   }): Promise<void> {
-    return this.#client.request(
+    return await this.#client.request(
       "POST",
       "/customers/conversations/escalate",
       { body: request },
