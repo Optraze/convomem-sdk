@@ -117,7 +117,7 @@ describe("ConvoMemClient Integration", () => {
 
   describe("Capture", () => {
     it("captures a single message", async () => {
-      const result = await client.capture.capture({
+      const result = await client.capture({
         message: "Hello from SDK test",
         customerId: customerId,
         channel: "CHAT",

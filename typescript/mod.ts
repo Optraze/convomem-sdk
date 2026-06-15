@@ -34,7 +34,7 @@ export { ConvoMemClient } from "./client.ts";
  *
  * Includes request/response types for every resource domain:
  * - **Capture** — {@link CaptureRequest}, {@link CaptureResponse}
- * - **Conversations** — {@link Conversation}, {@link ConversationListResponse}, {@link ConversationEndRequest}, {@link ConversationEscalateRequest}
+ * - **Conversations** — {@link Conversation}, {@link ConversationListResponse}, {@link ConversationEndRequest}, {@link ConversationEndResponse}, {@link ConversationEscalateRequest}, {@link ConversationEscalateResponse}
  * - **Config** — {@link ConvoMemConfig}
  * - **Customers** — {@link Customer}, {@link CustomerCreateRequest}, {@link CustomerListResponse}, {@link CustomerLookupParams}, {@link CustomerLookupResponse}, {@link CustomerUpdateRequest}
  * - **Embed** — {@link EmbedTokenRequest}, {@link EmbedTokenResponse}
@@ -57,7 +57,9 @@ export type {
   // Conversations
   Conversation,
   ConversationEndRequest,
+  ConversationEndResponse,
   ConversationEscalateRequest,
+  ConversationEscalateResponse,
   ConversationListResponse,
   // Config
   ConvoMemConfig,

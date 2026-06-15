@@ -20,7 +20,7 @@ import type { EmbedTokenRequest, EmbedTokenResponse } from "../types.ts";
  *
  * @example
  * ```ts
- * const client = new ConvoMemClient({ apiKey: "sk-org-abc", orgId: "org_1" });
+ * const client = new ConvoMemClient({ apiKey: "sk-org-abc" });
  *
  * // Mint a token for the handoff panel
  * const { token } = await client.embed.createToken({ customerId: "cust_abc123" });

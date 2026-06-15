@@ -34,7 +34,7 @@ import type {
  *
  * @example
  * ```ts
- * const client = new ConvoMemClient({ apiKey: "sk-org-abc", orgId: "org_1" });
+ * const client = new ConvoMemClient({ apiKey: "sk-org-abc" });
  *
  * // Get dashboard overview
  * const dashboard = await client.insights.dashboard();

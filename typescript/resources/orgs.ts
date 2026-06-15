@@ -30,7 +30,7 @@ import type {
  *
  * @example
  * ```ts
- * const client = new ConvoMemClient({ apiKey: "sk-org-abc", orgId: "org_1" });
+ * const client = new ConvoMemClient({ apiKey: "sk-org-abc" });
  *
  * // Create an organization
  * const org = await client.orgs.create({ name: "Acme Corp", plan: "enterprise" });

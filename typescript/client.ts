@@ -9,8 +9,8 @@
  * @module
  */
 
-import type { ConvoMemConfig } from "./types.ts";
-import { CaptureResource } from "./resources/capture.ts";
+import type { CaptureRequest, CaptureResponse, ConvoMemConfig } from "./types.ts";
+import { ConvoMemApiError, ConvoMemError } from "./errors.ts";
 import { CustomersResource } from "./resources/customers.ts";
 import { MemoriesResource } from "./resources/memories.ts";
 import { ConversationsResource } from "./resources/conversations.ts";
@@ -45,7 +45,7 @@ const DEFAULT_BASE_URL = "https://api.convomem.com/api/v1";
  * });
  *
  * // Capture a conversation
- * const capture = await client.capture.capture({
+ * const capture = await client.capture({
  *   conversationId: "conv_456",
  *   messages: [
  *     { role: "user", content: "Hello!" },
@@ -61,9 +61,6 @@ export class ConvoMemClient {
   readonly #timeout: number;
   readonly #maxRetries: number;
   readonly #retryDelay: number;
-
-  /** Resource for capturing and processing conversations. */
-  readonly capture: CaptureResource;
 
   /** Resource for managing customers. */
   readonly customers: CustomersResource;
@@ -108,7 +105,6 @@ export class ConvoMemClient {
     this.#maxRetries = config.maxRetries ?? 0;
     this.#retryDelay = config.retryDelay ?? 1000;
 
-    this.capture = new CaptureResource(this);
     this.customers = new CustomersResource(this);
     this.memories = new MemoriesResource(this);
     this.conversations = new ConversationsResource(this);
@@ -117,6 +113,45 @@ export class ConvoMemClient {
     this.orgs = new OrgsResource(this);
     this.insights = new InsightsResource(this);
     this.webhooks = new WebhooksResource(this);
+  }
+
+  /**
+   * Capture a message and auto-manage session.
+   *
+   * Resolves customer identity from the provided identifiers, finds or creates
+   * an active conversation for the specified channel, enqueues the message for
+   * asynchronous memory extraction, and returns session context including the
+   * conversation and customer IDs.
+   *
+   * @param request - The capture request containing the message, customer identity, and channel.
+   * @returns A {@link CaptureResponse} with conversation ID, customer ID, status, and flags indicating whether new records were created.
+   *
+   * @example
+   * ```ts
+   * // Simple single-message capture
+   * const result = await client.capture({
+   *   message: "What's the status of my order?",
+   *   customerId: "cust_abc123",
+   *   channel: "CHAT",
+   * });
+   *
+   * // Multi-turn conversation capture
+   * const result = await client.capture({
+   *   messages: [
+   *     { role: "user", content: "I want to return an item" },
+   *     { role: "assistant", content: "I can help with that. What's your order number?" },
+   *     { role: "user", content: "Order #12345" },
+   *   ],
+   *   email: "bob@example.com",
+   *   channel: "VOICE",
+   *   idempotencyKey: "cap_unique_123",
+   * });
+   * ```
+   */
+  async capture(request: CaptureRequest): Promise<CaptureResponse> {
+    return await this.request<CaptureResponse>("POST", "/capture", {
+      body: request,
+    });
   }
 
   /** @internal */
@@ -173,20 +208,25 @@ export class ConvoMemClient {
               continue;
             }
           }
-          throw new Error(
+          let body: unknown;
+          try {
+            body = text ? JSON.parse(text) : undefined;
+          } catch {
+            body = text;
+          }
+          throw new ConvoMemApiError(
+            res.status,
             `ConvoMem API error ${res.status}: ${text || res.statusText}`,
+            body,
           );
         }
 
-        // 204 No Content
-        if (res.status === 204) {
-          return undefined as T;
-        }
-
-        return res.json() as Promise<T>;
+        // Some endpoints respond 200/204 with an empty body.
+        const text = await res.text();
+        return (text ? JSON.parse(text) : undefined) as T;
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
-          lastError = new Error(
+          lastError = new ConvoMemError(
             `ConvoMem API request timed out after ${this.#timeout}ms`,
           );
           if (attempt < this.#maxRetries) {
@@ -203,6 +243,6 @@ export class ConvoMemClient {
       }
     }
 
-    throw lastError ?? new Error("ConvoMem API request failed after retries");
+    throw lastError ?? new ConvoMemError("ConvoMem API request failed after retries");
   }
 }

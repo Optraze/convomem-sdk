@@ -28,7 +28,7 @@ import type {
  *
  * @example
  * ```ts
- * const client = new ConvoMemClient({ apiKey: "sk-org-abc", orgId: "org_1" });
+ * const client = new ConvoMemClient({ apiKey: "sk-org-abc" });
  *
  * // Create a customer
  * const customer = await client.customers.create({
@@ -148,13 +148,16 @@ export class CustomersResource {
     if (opts?.page) params.page = String(opts.page);
     if (opts?.limit) params.limit = String(opts.limit);
 
-    return await this.#client.request<CustomerListResponse>(
-      "GET",
-      "/customers",
-      {
-        params,
-      },
-    );
+    const res = await this.#client.request<
+      { data: Customer[]; page: number; limit: number; total: number }
+    >("GET", "/customers", { params });
+
+    return {
+      customers: res.data,
+      page: res.page,
+      limit: res.limit,
+      total: res.total,
+    };
   }
 
   /**

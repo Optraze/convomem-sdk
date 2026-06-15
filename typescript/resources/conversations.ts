@@ -11,7 +11,9 @@ import type { ConvoMemClient } from "../client.ts";
 import type {
   Conversation,
   ConversationEndRequest,
+  ConversationEndResponse,
   ConversationEscalateRequest,
+  ConversationEscalateResponse,
   ConversationListResponse,
 } from "../types.ts";
 
@@ -24,7 +26,7 @@ import type {
  *
  * @example
  * ```ts
- * const client = new ConvoMemClient({ apiKey: "sk-org-abc", orgId: "org_1" });
+ * const client = new ConvoMemClient({ apiKey: "sk-org-abc" });
  *
  * // Start a new conversation
  * const conv = await client.conversations.start("cust_abc123", "CHAT");
@@ -98,11 +100,16 @@ export class ConversationsResource {
     if (opts?.page) params.page = String(opts.page);
     if (opts?.limit) params.limit = String(opts.limit);
 
-    return await this.#client.request<ConversationListResponse>(
-      "GET",
-      `/customers/${customerId}/conversations`,
-      { params },
-    );
+    const res = await this.#client.request<
+      { data: Conversation[]; page: number; limit: number; total: number }
+    >("GET", `/customers/${customerId}/conversations`, { params });
+
+    return {
+      conversations: res.data,
+      page: res.page,
+      limit: res.limit,
+      total: res.total,
+    };
   }
 
   /**
@@ -114,7 +121,7 @@ export class ConversationsResource {
    * @param customerId - The customer UUID.
    * @param conversationId - The conversation UUID to end.
    * @param request - Optional end request with an outcome description (e.g. `"resolved"`, `"customer_hung_up"`).
-   * @returns The updated {@link Conversation} record.
+   * @returns A {@link ConversationEndResponse} with the conversation ID, `"COMPLETED"` status, and end timestamp.
    *
    * @example
    * ```ts
@@ -131,8 +138,8 @@ export class ConversationsResource {
     customerId: string,
     conversationId: string,
     request?: ConversationEndRequest,
-  ): Promise<Conversation> {
-    return await this.#client.request<Conversation>(
+  ): Promise<ConversationEndResponse> {
+    return await this.#client.request<ConversationEndResponse>(
       "PATCH",
       `/customers/${customerId}/conversations/${conversationId}`,
       { body: request },
@@ -177,7 +184,7 @@ export class ConversationsResource {
    * @param customerId - The customer UUID.
    * @param conversationId - The conversation UUID to escalate.
    * @param request - Optional escalation request with a reason description.
-   * @returns The updated {@link Conversation} record.
+   * @returns A {@link ConversationEscalateResponse} with the conversation ID and `"ESCALATED"` status.
    *
    * @example
    * ```ts
@@ -194,8 +201,8 @@ export class ConversationsResource {
     customerId: string,
     conversationId: string,
     request?: ConversationEscalateRequest,
-  ): Promise<Conversation> {
-    return await this.#client.request<Conversation>(
+  ): Promise<ConversationEscalateResponse> {
+    return await this.#client.request<ConversationEscalateResponse>(
       "PATCH",
       `/customers/${customerId}/conversations/${conversationId}/escalate`,
       { body: request },

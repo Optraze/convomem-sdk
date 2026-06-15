@@ -30,7 +30,7 @@ import type {
  *
  * @example
  * ```ts
- * const client = new ConvoMemClient({ apiKey: "sk-org-abc", orgId: "org_1" });
+ * const client = new ConvoMemClient({ apiKey: "sk-org-abc" });
  *
  * // Add a memory directly
  * const memory = await client.memories.add("cust_abc123", {
@@ -187,11 +187,16 @@ export class MemoriesResource {
     if (opts?.page) params.page = String(opts.page);
     if (opts?.limit) params.limit = String(opts.limit);
 
-    return await this.#client.request<MemoryListResponse>(
-      "GET",
-      `/customers/${customerId}/memories`,
-      { params },
-    );
+    const res = await this.#client.request<
+      { data: Memory[]; page: number; limit: number; total: number }
+    >("GET", `/customers/${customerId}/memories`, { params });
+
+    return {
+      memories: res.data,
+      page: res.page,
+      limit: res.limit,
+      total: res.total,
+    };
   }
 
   /**

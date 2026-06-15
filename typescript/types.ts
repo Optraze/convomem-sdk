@@ -18,21 +18,18 @@
  * ```ts
  * const config: ConvoMemConfig = {
  *   apiKey: "sk-org-abc123",
- *   orgId: "org_42",
  *   timeout: 15000,
  *   maxRetries: 3,
  * };
  * ```
  */
 export interface ConvoMemConfig {
-  /** Organization API key (sk-org-...) */
+  /** Organization API key (sk-org-...). The organization is resolved from this key. */
   apiKey: string;
   /** Override base URL (default: https://api.convomem.com/api/v1) */
   baseUrl?: string;
   /** Custom fetch implementation (for testing or Deno Deploy) */
   fetch?: typeof globalThis.fetch;
-  /** Organization ID (for org-scoped operations) */
-  orgId?: string;
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number;
   /** Maximum number of retries for failed requests (default: 0) */
@@ -605,11 +602,33 @@ export interface ConversationEndRequest {
 }
 
 /**
+ * Response returned after ending a conversation.
+ */
+export interface ConversationEndResponse {
+  /** Conversation identifier */
+  id: string;
+  /** Conversation status after ending */
+  status: "COMPLETED";
+  /** ISO 8601 timestamp of conversation end */
+  endedAt?: string;
+}
+
+/**
  * Request payload for escalating a conversation.
  */
 export interface ConversationEscalateRequest {
   /** Reason for escalation */
   reason?: string;
+}
+
+/**
+ * Response returned after escalating a conversation.
+ */
+export interface ConversationEscalateResponse {
+  /** Conversation identifier */
+  id: string;
+  /** Conversation status after escalation */
+  status: "ESCALATED";
 }
 
 // ── Embed ───────────────────────────────────────────────

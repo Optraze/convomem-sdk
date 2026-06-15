@@ -25,7 +25,7 @@ import type {
  *
  * @example
  * ```ts
- * const client = new ConvoMemClient({ apiKey: "sk-org-abc", orgId: "org_1" });
+ * const client = new ConvoMemClient({ apiKey: "sk-org-abc" });
  *
  * // Search for entities
  * const results = await client.entities.search({ query: "Acme Corp", type: "company" });

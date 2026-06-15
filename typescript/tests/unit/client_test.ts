@@ -1,6 +1,6 @@
 import { beforeAll, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
-import { ConvoMemClient } from "../../mod.ts";
+import { ConvoMemApiError, ConvoMemClient } from "../../mod.ts";
 
 /** Creates a mock fetch that captures calls and returns predefined responses */
 function mockFetch(response: unknown, status = 200) {
@@ -13,16 +13,16 @@ function mockFetch(response: unknown, status = 200) {
     const url = typeof input === "string" ? input : input.toString();
     calls.push({ url, init });
 
-    if (status >= 400) {
-      return Promise.resolve(
-        new Response(JSON.stringify(response), {
-          status,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-    }
+    const body = response === undefined || response === null
+      ? null
+      : JSON.stringify(response);
 
-    return Promise.resolve(Response.json(response));
+    return Promise.resolve(
+      new Response(body, {
+        status,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+      }),
+    );
   };
 
   return { fetch, calls };
@@ -61,7 +61,7 @@ describe("ConvoMemClient Unit", () => {
       });
 
       const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
-      const result = await c.capture.capture({
+      const result = await c.capture({
         message: "Hello",
         customerId: "cust-456",
       });
@@ -151,7 +151,7 @@ describe("ConvoMemClient Unit", () => {
 
     it("sends GET /customers with pagination", async () => {
       const mock = mockFetch({
-        customers: [{ id: "cust-1" }],
+        data: [{ id: "cust-1" }],
         page: 1,
         limit: 10,
         total: 1,
@@ -187,7 +187,7 @@ describe("ConvoMemClient Unit", () => {
 
     it("sends GET /customers/{id}/memories", async () => {
       const mock = mockFetch({
-        memories: [{ id: "mem-1", fact: "Prefers morning deliveries" }],
+        data: [{ id: "mem-1", fact: "Prefers morning deliveries" }],
         page: 1,
         limit: 20,
         total: 1,
@@ -264,7 +264,7 @@ describe("ConvoMemClient Unit", () => {
 
     it("sends GET /customers/{id}/conversations", async () => {
       const mock = mockFetch({
-        conversations: [{ id: "conv-1", channel: "CHAT", status: "ACTIVE" }],
+        data: [{ id: "conv-1", channel: "CHAT", status: "ACTIVE" }],
         page: 1,
         limit: 20,
         total: 1,
@@ -401,16 +401,17 @@ describe("ConvoMemClient Unit", () => {
   });
 
   describe("Error handling", () => {
-    it("throws on non-2xx response", async () => {
+    it("throws ConvoMemApiError on non-2xx response", async () => {
       const mock = mockFetch({ error: "Unauthorized" }, 401);
 
       const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
 
-      await assertRejects(
+      const err = await assertRejects(
         () => c.customers.get("cust-123"),
-        Error,
+        ConvoMemApiError,
         "401",
       );
+      assertEquals(err.status, 401);
     });
 
     it("includes response body in error", async () => {
@@ -418,11 +419,13 @@ describe("ConvoMemClient Unit", () => {
 
       const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
 
-      await assertRejects(
+      const err = await assertRejects(
         () => c.customers.get("cust-123"),
-        Error,
+        ConvoMemApiError,
         "404",
       );
+      assertEquals(err.status, 404);
+      assertEquals(err.body, { error: "Not found", code: "NOT_FOUND" });
     });
   });
 
