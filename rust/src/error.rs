@@ -1,37 +1,17 @@
-use std::fmt;
 
-pub type Result<T> = std::result::Result<T, ConvoMemError>;
+pub type Result<T, E = ConvoMemError> = std::result::Result<T, E>;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ConvoMemError {
-    Http(reqwest::Error),
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
+
+    #[error("API error {status}: {message}")]
     Api { status: u16, message: String },
+
+    #[error("Config error: {0}")]
     Config(String),
-}
 
-impl fmt::Display for ConvoMemError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Http(e) => write!(f, "HTTP error: {e}"),
-            Self::Api { status, message } => write!(f, "API error {status}: {message}"),
-            Self::Config(msg) => write!(f, "Config error: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for ConvoMemError {}
-
-impl From<reqwest::Error> for ConvoMemError {
-    fn from(e: reqwest::Error) -> Self {
-        Self::Http(e)
-    }
-}
-
-impl From<serde_json::Error> for ConvoMemError {
-    fn from(e: serde_json::Error) -> Self {
-        Self::Api {
-            status: 0,
-            message: format!("JSON parse error: {e}"),
-        }
-    }
+    #[error("JSON parse error: {0}")]
+    Json(#[from] serde_json::Error),
 }
