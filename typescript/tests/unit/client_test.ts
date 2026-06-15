@@ -13,6 +13,10 @@ function mockFetch(response: unknown, status = 200) {
     const url = typeof input === "string" ? input : input.toString();
     calls.push({ url, init });
 
+    if (init?.signal?.aborted) {
+      return Promise.reject(new DOMException("Aborted", "AbortError"));
+    }
+
     const body = response === undefined || response === null
       ? null
       : JSON.stringify(response);
@@ -426,6 +430,37 @@ describe("ConvoMemClient Unit", () => {
       );
       assertEquals(err.status, 404);
       assertEquals(err.body, { error: "Not found", code: "NOT_FOUND" });
+    });
+
+    it("includes the request URL in the error", async () => {
+      const mock = mockFetch({ error: "Not found" }, 404);
+
+      const c = new ConvoMemClient({
+        apiKey: "test-key",
+        baseUrl: "https://api.example.com/api/v1",
+        fetch: mock.fetch,
+      });
+
+      const err = await assertRejects(
+        () => c.customers.get("cust-123"),
+        ConvoMemApiError,
+      );
+      assertEquals(err.url, "https://api.example.com/api/v1/customers/cust-123");
+    });
+  });
+
+  describe("Cancellation", () => {
+    it("rejects with AbortError when an external signal is aborted", async () => {
+      const mock = mockFetch({ id: "cust-1" });
+      const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
+
+      const controller = new AbortController();
+      controller.abort();
+
+      await assertRejects(
+        () => c.customers.get("cust-1", { signal: controller.signal }),
+        Error,
+      );
     });
   });
 

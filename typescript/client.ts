@@ -124,6 +124,8 @@ export class ConvoMemClient {
    * conversation and customer IDs.
    *
    * @param request - The capture request containing the message, customer identity, and channel.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link CaptureResponse} with conversation ID, customer ID, status, and flags indicating whether new records were created.
    *
    * @example
@@ -148,10 +150,23 @@ export class ConvoMemClient {
    * });
    * ```
    */
-  async capture(request: CaptureRequest): Promise<CaptureResponse> {
+  async capture(
+    request: CaptureRequest,
+    opts?: { signal?: AbortSignal },
+  ): Promise<CaptureResponse> {
     return await this.request<CaptureResponse>("POST", "/capture", {
       body: request,
+      signal: opts?.signal,
     });
+  }
+
+  /**
+   * Returns a delay in milliseconds for the given retry attempt, using full
+   * jitter (random value between 0 and the linear backoff base) to avoid
+   * synchronized retries from multiple clients.
+   */
+  #retryDelayMs(attempt: number): number {
+    return Math.random() * this.#retryDelay * (attempt + 1);
   }
 
   /** @internal */
@@ -162,6 +177,8 @@ export class ConvoMemClient {
       body?: unknown;
       params?: Record<string, string>;
       headers?: Record<string, string>;
+      /** Optional signal to allow external cancellation of this request. */
+      signal?: AbortSignal;
     },
   ): Promise<T> {
     const url = new URL(`${this.#baseUrl}${path}`);
@@ -191,19 +208,19 @@ export class ConvoMemClient {
     for (let attempt = 0; attempt <= this.#maxRetries; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.#timeout);
+      const signal = options?.signal
+        ? AbortSignal.any([controller.signal, options.signal])
+        : controller.signal;
 
       try {
-        const res = await this.#fetch(url, {
-          ...init,
-          signal: controller.signal,
-        });
+        const res = await this.#fetch(url, { ...init, signal });
 
         if (!res.ok) {
           const text = await res.text().catch(() => "");
           if (res.status >= 500 || res.status === 429) {
             if (attempt < this.#maxRetries) {
               await new Promise((r) =>
-                setTimeout(r, this.#retryDelay * (attempt + 1))
+                setTimeout(r, this.#retryDelayMs(attempt))
               );
               continue;
             }
@@ -217,6 +234,7 @@ export class ConvoMemClient {
           throw new ConvoMemApiError(
             res.status,
             `ConvoMem API error ${res.status}: ${text || res.statusText}`,
+            url.toString(),
             body,
           );
         }
@@ -226,12 +244,15 @@ export class ConvoMemClient {
         return (text ? JSON.parse(text) : undefined) as T;
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
+          if (options?.signal?.aborted) {
+            throw err;
+          }
           lastError = new ConvoMemError(
             `ConvoMem API request timed out after ${this.#timeout}ms`,
           );
           if (attempt < this.#maxRetries) {
             await new Promise((r) =>
-              setTimeout(r, this.#retryDelay * (attempt + 1))
+              setTimeout(r, this.#retryDelayMs(attempt))
             );
             continue;
           }

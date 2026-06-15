@@ -59,6 +59,8 @@ export class MemoriesResource {
    *
    * @param customerId - The customer UUID to associate extracted memories with.
    * @param request - The ingestion request containing conversation messages and optional channel.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns An object with the `captureId` and status `"queued"` confirming the ingestion was accepted.
    *
    * @example
@@ -78,11 +80,12 @@ export class MemoriesResource {
   async ingest(
     customerId: string,
     request: MemoryIngestRequest,
+    opts?: { signal?: AbortSignal },
   ): Promise<{ captureId: string; status: "queued" }> {
     return await this.#client.request(
       "POST",
       `/customers/${customerId}/memories/ingest`,
-      { body: request },
+      { body: request, signal: opts?.signal },
     );
   }
 
@@ -95,6 +98,8 @@ export class MemoriesResource {
    *
    * @param customerId - The customer UUID.
    * @param params - Lookup parameters including the topic to search for.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link MemoryContext} with the rendered context string, token count, and matching memories.
    *
    * @example
@@ -111,11 +116,12 @@ export class MemoriesResource {
   async lookup(
     customerId: string,
     params: MemoryLookupParams,
+    opts?: { signal?: AbortSignal },
   ): Promise<MemoryContext> {
     return await this.#client.request<MemoryContext>(
       "GET",
       `/customers/${customerId}/memories/lookup`,
-      { params: { topic: params.topic } },
+      { params: { topic: params.topic }, signal: opts?.signal },
     );
   }
 
@@ -127,6 +133,8 @@ export class MemoriesResource {
    * but have their contact information.
    *
    * @param params - Lookup parameters including the topic and at least one identity field (phone, email, or externalId).
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link MemoryContext} with the rendered context string, token count, and matching memories.
    *
    * @example
@@ -145,6 +153,7 @@ export class MemoriesResource {
       email?: string;
       externalId?: string;
     },
+    opts?: { signal?: AbortSignal },
   ): Promise<MemoryContext> {
     const query: Record<string, string> = { topic: params.topic };
     if (params.phone) query.phone = params.phone;
@@ -154,7 +163,7 @@ export class MemoriesResource {
     return await this.#client.request<MemoryContext>(
       "GET",
       "/customers/memories/lookup",
-      { params: query },
+      { params: query, signal: opts?.signal },
     );
   }
 
@@ -168,6 +177,7 @@ export class MemoriesResource {
    * @param opts - Optional pagination parameters.
    * @param opts.page - Page number (1-indexed). Defaults to 1.
    * @param opts.limit - Maximum number of memories per page. Defaults to API default.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link MemoryListResponse} with the memory array, pagination metadata, and total count.
    *
    * @example
@@ -181,7 +191,7 @@ export class MemoriesResource {
    */
   async list(
     customerId: string,
-    opts?: { page?: number; limit?: number },
+    opts?: { page?: number; limit?: number; signal?: AbortSignal },
   ): Promise<MemoryListResponse> {
     const params: Record<string, string> = {};
     if (opts?.page) params.page = String(opts.page);
@@ -189,7 +199,10 @@ export class MemoriesResource {
 
     const res = await this.#client.request<
       { data: Memory[]; page: number; limit: number; total: number }
-    >("GET", `/customers/${customerId}/memories`, { params });
+    >("GET", `/customers/${customerId}/memories`, {
+      params,
+      signal: opts?.signal,
+    });
 
     return {
       memories: res.data,
@@ -208,6 +221,8 @@ export class MemoriesResource {
    * @param customerId - The customer UUID.
    * @param memId - The memory UUID to update.
    * @param request - The update payload with fields to change (fact, category, importance).
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A promise that resolves when the update is complete.
    *
    * @example
@@ -222,11 +237,12 @@ export class MemoriesResource {
     customerId: string,
     memId: string,
     request: MemoryUpdateRequest,
+    opts?: { signal?: AbortSignal },
   ): Promise<void> {
     return await this.#client.request(
       "PATCH",
       `/customers/${customerId}/memories/${memId}`,
-      { body: request },
+      { body: request, signal: opts?.signal },
     );
   }
 
@@ -235,6 +251,8 @@ export class MemoriesResource {
    *
    * @param customerId - The customer UUID.
    * @param memId - The memory UUID to delete.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A promise that resolves when the deletion is complete.
    *
    * @example
@@ -242,10 +260,15 @@ export class MemoriesResource {
    * await client.memories.delete("cust_abc123", "mem_xyz789");
    * ```
    */
-  async delete(customerId: string, memId: string): Promise<void> {
+  async delete(
+    customerId: string,
+    memId: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<void> {
     return await this.#client.request(
       "DELETE",
       `/customers/${customerId}/memories/${memId}`,
+      { signal: opts?.signal },
     );
   }
 
@@ -257,6 +280,8 @@ export class MemoriesResource {
    *
    * @param customerId - The customer UUID.
    * @param request - The memory payload with fact text, optional category, importance, and memoryType.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns The newly created {@link Memory} record.
    *
    * @example
@@ -271,11 +296,15 @@ export class MemoriesResource {
    * console.log(memory.id); // "mem_new123"
    * ```
    */
-  async add(customerId: string, request: MemoryAddRequest): Promise<Memory> {
+  async add(
+    customerId: string,
+    request: MemoryAddRequest,
+    opts?: { signal?: AbortSignal },
+  ): Promise<Memory> {
     return await this.#client.request<Memory>(
       "POST",
       `/customers/${customerId}/memories`,
-      { body: request },
+      { body: request, signal: opts?.signal },
     );
   }
 
@@ -284,6 +313,8 @@ export class MemoriesResource {
    *
    * @param customerId - The customer UUID.
    * @param memId - The memory UUID.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns The {@link Memory} record.
    *
    * @example
@@ -294,10 +325,15 @@ export class MemoriesResource {
    * console.log(memory.importance); // 0.8
    * ```
    */
-  async get(customerId: string, memId: string): Promise<Memory> {
+  async get(
+    customerId: string,
+    memId: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<Memory> {
     return await this.#client.request<Memory>(
       "GET",
       `/customers/${customerId}/memories/${memId}`,
+      { signal: opts?.signal },
     );
   }
 
@@ -309,6 +345,8 @@ export class MemoriesResource {
    * feedback relates to stored customer knowledge.
    *
    * @param params - Feedback lookup parameters including customer identity and optional topic filter.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link FeedbackLookupResponse} with feedback data and associated memories.
    *
    * @example
@@ -326,11 +364,12 @@ export class MemoriesResource {
    */
   async lookupFeedback(
     params: FeedbackLookupRequest,
+    opts?: { signal?: AbortSignal },
   ): Promise<FeedbackLookupResponse> {
     return await this.#client.request<FeedbackLookupResponse>(
       "POST",
       "/memories/lookup-feedback",
-      { body: params },
+      { body: params, signal: opts?.signal },
     );
   }
 }

@@ -50,6 +50,8 @@ export class ConversationsResource {
    *
    * @param customerId - The customer UUID to start the conversation for.
    * @param channel - The communication channel: `"VOICE"`, `"CHAT"`, `"SMS"`, or `"EMAIL"`.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns The newly created {@link Conversation} record with status `"ACTIVE"`.
    *
    * @example
@@ -63,11 +65,12 @@ export class ConversationsResource {
   async start(
     customerId: string,
     channel: "VOICE" | "CHAT" | "SMS" | "EMAIL",
+    opts?: { signal?: AbortSignal },
   ): Promise<Conversation> {
     return await this.#client.request<Conversation>(
       "POST",
       `/customers/${customerId}/conversations`,
-      { body: { channel } },
+      { body: { channel }, signal: opts?.signal },
     );
   }
 
@@ -81,6 +84,7 @@ export class ConversationsResource {
    * @param opts - Optional pagination parameters.
    * @param opts.page - Page number (1-indexed). Defaults to 1.
    * @param opts.limit - Maximum number of conversations per page. Defaults to API default.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link ConversationListResponse} with the conversation array, pagination metadata, and total count.
    *
    * @example
@@ -94,7 +98,7 @@ export class ConversationsResource {
    */
   async list(
     customerId: string,
-    opts?: { page?: number; limit?: number },
+    opts?: { page?: number; limit?: number; signal?: AbortSignal },
   ): Promise<ConversationListResponse> {
     const params: Record<string, string> = {};
     if (opts?.page) params.page = String(opts.page);
@@ -102,7 +106,10 @@ export class ConversationsResource {
 
     const res = await this.#client.request<
       { data: Conversation[]; page: number; limit: number; total: number }
-    >("GET", `/customers/${customerId}/conversations`, { params });
+    >("GET", `/customers/${customerId}/conversations`, {
+      params,
+      signal: opts?.signal,
+    });
 
     return {
       conversations: res.data,
@@ -121,6 +128,8 @@ export class ConversationsResource {
    * @param customerId - The customer UUID.
    * @param conversationId - The conversation UUID to end.
    * @param request - Optional end request with an outcome description (e.g. `"resolved"`, `"customer_hung_up"`).
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link ConversationEndResponse} with the conversation ID, `"COMPLETED"` status, and end timestamp.
    *
    * @example
@@ -138,11 +147,12 @@ export class ConversationsResource {
     customerId: string,
     conversationId: string,
     request?: ConversationEndRequest,
+    opts?: { signal?: AbortSignal },
   ): Promise<ConversationEndResponse> {
     return await this.#client.request<ConversationEndResponse>(
       "PATCH",
       `/customers/${customerId}/conversations/${conversationId}`,
-      { body: request },
+      { body: request, signal: opts?.signal },
     );
   }
 
@@ -154,6 +164,8 @@ export class ConversationsResource {
    * a single POST body.
    *
    * @param request - The end request with customerId, conversationId, and optional outcome.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A promise that resolves when the conversation is ended.
    *
    * @example
@@ -165,13 +177,17 @@ export class ConversationsResource {
    * });
    * ```
    */
-  async endFlat(request: {
-    customerId: string;
-    conversationId: string;
-    outcome?: string;
-  }): Promise<void> {
+  async endFlat(
+    request: {
+      customerId: string;
+      conversationId: string;
+      outcome?: string;
+    },
+    opts?: { signal?: AbortSignal },
+  ): Promise<void> {
     return await this.#client.request("POST", "/customers/conversations/end", {
       body: request,
+      signal: opts?.signal,
     });
   }
 
@@ -184,6 +200,8 @@ export class ConversationsResource {
    * @param customerId - The customer UUID.
    * @param conversationId - The conversation UUID to escalate.
    * @param request - Optional escalation request with a reason description.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link ConversationEscalateResponse} with the conversation ID and `"ESCALATED"` status.
    *
    * @example
@@ -201,11 +219,12 @@ export class ConversationsResource {
     customerId: string,
     conversationId: string,
     request?: ConversationEscalateRequest,
+    opts?: { signal?: AbortSignal },
   ): Promise<ConversationEscalateResponse> {
     return await this.#client.request<ConversationEscalateResponse>(
       "PATCH",
       `/customers/${customerId}/conversations/${conversationId}/escalate`,
-      { body: request },
+      { body: request, signal: opts?.signal },
     );
   }
 
@@ -216,6 +235,8 @@ export class ConversationsResource {
    * body instead of URL path parameters.
    *
    * @param request - The escalation request with customerId, conversationId, and optional reason.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A promise that resolves when the escalation is complete.
    *
    * @example
@@ -227,15 +248,18 @@ export class ConversationsResource {
    * });
    * ```
    */
-  async escalateFlat(request: {
-    customerId: string;
-    conversationId: string;
-    reason?: string;
-  }): Promise<void> {
+  async escalateFlat(
+    request: {
+      customerId: string;
+      conversationId: string;
+      reason?: string;
+    },
+    opts?: { signal?: AbortSignal },
+  ): Promise<void> {
     return await this.#client.request(
       "POST",
       "/customers/conversations/escalate",
-      { body: request },
+      { body: request, signal: opts?.signal },
     );
   }
 }

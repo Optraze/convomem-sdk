@@ -51,7 +51,7 @@ export class ConvoMemError extends Error {
  *   await client.customers.get("nonexistent_id");
  * } catch (err) {
  *   if (err instanceof ConvoMemApiError) {
- *     console.error(`API error ${err.status}: ${err.message}`);
+ *     console.error(`API error ${err.status} on ${err.url}: ${err.message}`);
  *     if (err.body) {
  *       console.error("Response body:", err.body);
  *     }
@@ -63,6 +63,9 @@ export class ConvoMemApiError extends ConvoMemError {
   /** The HTTP status code returned by the API (e.g., 400, 404, 500). */
   readonly status: number;
 
+  /** The request URL that returned the error response. */
+  readonly url: string;
+
   /** The parsed response body from the API, if available. */
   readonly body?: unknown;
 
@@ -71,12 +74,14 @@ export class ConvoMemApiError extends ConvoMemError {
    *
    * @param status - The HTTP status code from the API response.
    * @param message - A human-readable description of the error.
+   * @param url - The request URL that returned the error response.
    * @param body - The parsed response body from the API, if available.
    */
-  constructor(status: number, message: string, body?: unknown) {
+  constructor(status: number, message: string, url: string, body?: unknown) {
     super(message);
     this.name = "ConvoMemApiError";
     this.status = status;
+    this.url = url;
     this.body = body;
   }
 }

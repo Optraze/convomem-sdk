@@ -44,6 +44,8 @@ export class EmbedResource {
    * is scoped to a specific customer and expires after the configured TTL.
    *
    * @param request - The token request with customer identity and optional TTL.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns An {@link EmbedTokenResponse} with the token string, expiration time, and scope.
    *
    * @example
@@ -58,12 +60,16 @@ export class EmbedResource {
    * console.log(scope);      // "customer"
    * ```
    */
-  async createToken(request: EmbedTokenRequest): Promise<EmbedTokenResponse> {
+  async createToken(
+    request: EmbedTokenRequest,
+    opts?: { signal?: AbortSignal },
+  ): Promise<EmbedTokenResponse> {
     return await this.#client.request<EmbedTokenResponse>(
       "POST",
       "/embed/tokens",
       {
         body: request,
+        signal: opts?.signal,
       },
     );
   }
@@ -76,6 +82,8 @@ export class EmbedResource {
    * authentication is handled by the token itself.
    *
    * @param token - The embed token obtained from {@link createToken}.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns The handoff context data (structure matches {@link HandoffResponse}).
    *
    * @example
@@ -90,9 +98,13 @@ export class EmbedResource {
    * console.log(handoff.journey);   // Conversation history
    * ```
    */
-  async getHandoff(token: string): Promise<unknown> {
+  async getHandoff(
+    token: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<unknown> {
     return await this.#client.request("GET", "/embed/handoff", {
       params: { token },
+      signal: opts?.signal,
     });
   }
 }

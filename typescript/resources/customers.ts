@@ -55,6 +55,8 @@ export class CustomersResource {
    * them as context for LLM injection. Can auto-create the customer if not found.
    *
    * @param params - Lookup parameters including customer identifiers, topic, and auto-create flag.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link CustomerLookupResponse} with the matched customer, associated memories, and pre-rendered context.
    *
    * @example
@@ -75,7 +77,10 @@ export class CustomersResource {
    * }
    * ```
    */
-  async lookup(params: CustomerLookupParams): Promise<CustomerLookupResponse> {
+  async lookup(
+    params: CustomerLookupParams,
+    opts?: { signal?: AbortSignal },
+  ): Promise<CustomerLookupResponse> {
     const query: Record<string, string> = {};
     if (params.customerId) query.customerId = params.customerId;
     if (params.phone) query.phone = params.phone;
@@ -88,7 +93,7 @@ export class CustomersResource {
     return await this.#client.request<CustomerLookupResponse>(
       "GET",
       "/customers/lookup",
-      { params: query },
+      { params: query, signal: opts?.signal },
     );
   }
 
@@ -99,6 +104,8 @@ export class CustomersResource {
    * can be identified by email, phone, externalId, or any combination thereof.
    *
    * @param request - The customer creation payload with name, email, phone, externalId, and optional metadata.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns The newly created {@link Customer} record.
    *
    * @example
@@ -113,9 +120,13 @@ export class CustomersResource {
    * console.log(customer.id); // "cust_abc123"
    * ```
    */
-  async create(request: CustomerCreateRequest): Promise<Customer> {
+  async create(
+    request: CustomerCreateRequest,
+    opts?: { signal?: AbortSignal },
+  ): Promise<Customer> {
     return await this.#client.request<Customer>("POST", "/customers", {
       body: request,
+      signal: opts?.signal,
     });
   }
 
@@ -127,6 +138,7 @@ export class CustomersResource {
    * @param opts - Optional pagination parameters.
    * @param opts.page - Page number (1-indexed). Defaults to 1.
    * @param opts.limit - Maximum number of customers per page. Defaults to API default.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link CustomerListResponse} with the customer array, pagination metadata, and total count.
    *
    * @example
@@ -143,6 +155,7 @@ export class CustomersResource {
   async list(opts?: {
     page?: number;
     limit?: number;
+    signal?: AbortSignal;
   }): Promise<CustomerListResponse> {
     const params: Record<string, string> = {};
     if (opts?.page) params.page = String(opts.page);
@@ -150,7 +163,7 @@ export class CustomersResource {
 
     const res = await this.#client.request<
       { data: Customer[]; page: number; limit: number; total: number }
-    >("GET", "/customers", { params });
+    >("GET", "/customers", { params, signal: opts?.signal });
 
     return {
       customers: res.data,
@@ -164,6 +177,8 @@ export class CustomersResource {
    * Get a single customer by their unique ID.
    *
    * @param id - The customer UUID.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns The {@link Customer} record.
    *
    * @example
@@ -174,8 +189,10 @@ export class CustomersResource {
    * console.log(customer.memoryCount); // 14
    * ```
    */
-  async get(id: string): Promise<Customer> {
-    return await this.#client.request<Customer>("GET", `/customers/${id}`);
+  async get(id: string, opts?: { signal?: AbortSignal }): Promise<Customer> {
+    return await this.#client.request<Customer>("GET", `/customers/${id}`, {
+      signal: opts?.signal,
+    });
   }
 
   /**
@@ -186,6 +203,8 @@ export class CustomersResource {
    *
    * @param id - The customer UUID.
    * @param request - The update payload with fields to change.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns The updated {@link Customer} record.
    *
    * @example
@@ -196,9 +215,14 @@ export class CustomersResource {
    * });
    * ```
    */
-  async update(id: string, request: CustomerUpdateRequest): Promise<Customer> {
+  async update(
+    id: string,
+    request: CustomerUpdateRequest,
+    opts?: { signal?: AbortSignal },
+  ): Promise<Customer> {
     return await this.#client.request<Customer>("PATCH", `/customers/${id}`, {
       body: request,
+      signal: opts?.signal,
     });
   }
 
@@ -209,6 +233,8 @@ export class CustomersResource {
    * linked to this customer will also be removed.
    *
    * @param id - The customer UUID to delete.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A promise that resolves when the deletion is complete.
    *
    * @example
@@ -216,8 +242,10 @@ export class CustomersResource {
    * await client.customers.delete("cust_abc123");
    * ```
    */
-  async delete(id: string): Promise<void> {
-    return await this.#client.request<void>("DELETE", `/customers/${id}`);
+  async delete(id: string, opts?: { signal?: AbortSignal }): Promise<void> {
+    return await this.#client.request<void>("DELETE", `/customers/${id}`, {
+      signal: opts?.signal,
+    });
   }
 
   /**
@@ -228,6 +256,8 @@ export class CustomersResource {
    * customer is resolved from any of the provided identifiers.
    *
    * @param params - Handoff parameters including customer identifiers and options for narrative/fresh generation.
+   * @param opts - Optional settings.
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link HandoffResponse} with the customer record, journey, key memories, sentiment trend, and optional narrative.
    *
    * @example
@@ -242,7 +272,10 @@ export class CustomersResource {
    * console.log(handoff.journey);   // Conversation history
    * ```
    */
-  async handoff(params: HandoffParams): Promise<HandoffResponse> {
+  async handoff(
+    params: HandoffParams,
+    opts?: { signal?: AbortSignal },
+  ): Promise<HandoffResponse> {
     const query: Record<string, string> = {};
     if (params.customerId) query.customerId = params.customerId;
     if (params.phone) query.phone = params.phone;
@@ -256,6 +289,7 @@ export class CustomersResource {
       "/customers/handoff",
       {
         params: query,
+        signal: opts?.signal,
       },
     );
   }
@@ -270,6 +304,7 @@ export class CustomersResource {
    * @param opts - Optional handoff options.
    * @param opts.narrative - Whether to include an LLM-generated narrative summary (`"true"` or `"false"`).
    * @param opts.fresh - Whether to generate a fresh (non-cached) summary (`"true"` or `"false"`).
+   * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns A {@link HandoffResponse} with the customer record, journey, key memories, sentiment trend, and optional narrative.
    *
    * @example
@@ -284,7 +319,11 @@ export class CustomersResource {
    */
   async handoffById(
     id: string,
-    opts?: { narrative?: "true" | "false"; fresh?: "true" | "false" },
+    opts?: {
+      narrative?: "true" | "false";
+      fresh?: "true" | "false";
+      signal?: AbortSignal;
+    },
   ): Promise<HandoffResponse> {
     const params: Record<string, string> = {};
     if (opts?.narrative) params.narrative = opts.narrative;
@@ -293,7 +332,7 @@ export class CustomersResource {
     return await this.#client.request<HandoffResponse>(
       "GET",
       `/customers/${id}/handoff`,
-      { params },
+      { params, signal: opts?.signal },
     );
   }
 }
