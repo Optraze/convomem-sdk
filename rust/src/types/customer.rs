@@ -49,7 +49,7 @@ pub struct CustomerLookupResponse {
     pub token_count: Option<u32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomerCreateRequest {
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1,5 +1,5 @@
 {
-  "name": "@optraze/convomem",
+  "name": "@optraze/convomem-sdk",
   "version": "0.1.0",
   "exports": {
     ".": "./mod.ts",
