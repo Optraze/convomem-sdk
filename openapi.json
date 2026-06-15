@@ -1,0 +1,2517 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "ConvoMem Integration API",
+    "version": "1.0.0",
+    "description": "Integration API for external AI agents (voice/chat): capture messages, resolve customers, manage conversations, and ingest/lookup memories."
+  },
+  "servers": [
+    {
+      "url": "https://api.convomem.com/api/v1"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Organization API key from your dashboard. Prefix: sk-org-..."
+      }
+    },
+    "schemas": {
+      "MemoryContext": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "string",
+            "description": "Formatted context string ready for LLM injection"
+          },
+          "tokenCount": {
+            "type": "integer",
+            "description": "Estimated token count of the context"
+          },
+          "memories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "memoryType": {
+                  "type": "string"
+                },
+                "relevance": {
+                  "type": "number",
+                  "format": "float"
+                },
+                "sentiment": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "sourceContext": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/capture": {
+      "post": {
+        "summary": "Capture a message and auto-manage session",
+        "description": "Single endpoint for external integrators. Resolves customer identity, finds or creates an active conversation session, enqueues the message for memory extraction, and returns the session context. No explicit start/end lifecycle calls required. Accepts either a single message string or a full messages array (with user + assistant turns) — one is required.\n",
+        "tags": [
+          "Capture"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Either `message` or `messages` is required. At least one identity field (`customerId`, `externalId`, `email`, or `phoneNumber`) is required.\n",
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "maxLength": 10000,
+                    "description": "Single user message (simple form). Required if messages not provided."
+                  },
+                  "messages": {
+                    "type": "array",
+                    "description": "Full conversation turns including assistant replies. Required if message not provided.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "role",
+                        "content"
+                      ],
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "assistant",
+                            "system"
+                          ]
+                        },
+                        "content": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "customerId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Identity field — at least one of customerId, externalId, email, or phoneNumber is required."
+                  },
+                  "externalId": {
+                    "type": "string",
+                    "description": "Identity field — at least one of customerId, externalId, email, or phoneNumber is required."
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Identity field — at least one of customerId, externalId, email, or phoneNumber is required."
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "description": "Identity field — at least one of customerId, externalId, email, or phoneNumber is required."
+                  },
+                  "userName": {
+                    "type": "string",
+                    "description": "Customer display name — used to set or update the customer profile name (backfills placeholder names like phone numbers)"
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "VOICE",
+                      "CHAT",
+                      "SMS",
+                      "EMAIL"
+                    ],
+                    "default": "CHAT"
+                  },
+                  "idempotencyKey": {
+                    "type": "string",
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message appended to existing conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "customerId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "new",
+                        "active"
+                      ]
+                    },
+                    "isNewConversation": {
+                      "type": "boolean"
+                    },
+                    "isNewCustomer": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "example": {
+                  "conversationId": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
+                  "customerId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  "status": "active",
+                  "isNewConversation": false,
+                  "isNewCustomer": false
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New conversation created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversationId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "The conversation session ID (reused across calls for the same customer while session is active)"
+                    },
+                    "customerId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "The resolved or newly created customer ID"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "new",
+                        "active"
+                      ],
+                      "description": "'new' if a new conversation was started, 'active' if appended to an existing session"
+                    },
+                    "isNewConversation": {
+                      "type": "boolean",
+                      "description": "true when this call started a new conversation session"
+                    },
+                    "isNewCustomer": {
+                      "type": "boolean",
+                      "description": "true when the customer was created by this call"
+                    }
+                  }
+                },
+                "example": {
+                  "conversationId": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
+                  "customerId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  "status": "new",
+                  "isNewConversation": true,
+                  "isNewCustomer": false
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/customers/lookup": {
+      "get": {
+        "summary": "Lookup customer by identifier with optional semantic memory",
+        "description": "Find a customer by internal UUID, phone number, email address, or external ID. At least one identity parameter must be provided.\n\n**topic** — When provided, returns semantically relevant memories ranked by vector similarity instead of the 10 most recent. Also returns a pre-formatted `context` string ready to inject into an LLM prompt and a `tokenCount` estimate.\n\n**autoCreate** — When `true`, automatically creates a new customer record if the identifier is not found. The response will include `isNewCustomer: true`. Use `userName` to set the display name for newly created customers.\n\nThis is the primary \"plug-and-forget\" endpoint for bot integrations. A single call resolves identity, creates new customers, and returns relevant memory context — no internal IDs required.\n",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "query",
+            "name": "customerId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Internal customer UUID"
+          },
+          {
+            "in": "query",
+            "name": "phone",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Customer phone number"
+          },
+          {
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Customer email address"
+          },
+          {
+            "in": "query",
+            "name": "externalId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "External system identifier"
+          },
+          {
+            "in": "query",
+            "name": "topic",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Topic or customer message to find relevant memories for. When provided, memories are ranked by semantic relevance and a pre-formatted context string is returned.\n"
+          },
+          {
+            "in": "query",
+            "name": "autoCreate",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Auto-create customer if not found. Response includes isNewCustomer flag.\n"
+          },
+          {
+            "in": "query",
+            "name": "userName",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Display name for auto-created customers"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lookup result with optional semantic memories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "found": {
+                      "type": "boolean"
+                    },
+                    "isNewCustomer": {
+                      "type": "boolean",
+                      "description": "true when customer was auto-created by this call"
+                    },
+                    "customer": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "externalId": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "type": "object"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    "memories": {
+                      "type": "array",
+                      "description": "Recent or topic-relevant memories",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "content": {
+                            "type": "string",
+                            "description": "The memory fact text"
+                          },
+                          "category": {
+                            "type": "string",
+                            "description": "Memory category (e.g. preference, customer_profile, purchase_history, pain_point)"
+                          },
+                          "memoryType": {
+                            "type": "string",
+                            "description": "Type of memory (fact, preference, intent, goal)"
+                          },
+                          "relevance": {
+                            "type": "number",
+                            "description": "Semantic similarity score (0-1) — only present when topic is provided"
+                          },
+                          "sentiment": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Detected sentiment (positive, negative, neutral, null)"
+                          },
+                          "sourceContext": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Original conversation snippet the memory was extracted from"
+                          }
+                        }
+                      }
+                    },
+                    "context": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Pre-formatted context string for LLM injection (only when topic is provided)"
+                    },
+                    "tokenCount": {
+                      "type": "integer",
+                      "description": "Estimated token count of context string (only when topic is provided)"
+                    }
+                  }
+                },
+                "examples": {
+                  "with_topic": {
+                    "summary": "Lookup with semantic topic",
+                    "value": {
+                      "found": true,
+                      "isNewCustomer": false,
+                      "customer": {
+                        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                        "name": "Jane Doe",
+                        "phone": "+15551234567",
+                        "email": "jane@example.com"
+                      },
+                      "memories": [
+                        {
+                          "id": "m1a2b3c4-d5e6-7890-abcd-ef1234567890",
+                          "content": "Had unresolved billing dispute in February",
+                          "category": "pain_point",
+                          "memoryType": "fact",
+                          "relevance": 0.82,
+                          "sentiment": "negative",
+                          "sourceContext": "Customer said: I still haven't received my refund from February"
+                        },
+                        {
+                          "id": "m2b3c4d5-e6f7-8901-bcde-f23456789012",
+                          "content": "Has been a customer for 3 years",
+                          "category": "customer_profile",
+                          "memoryType": "fact",
+                          "relevance": 0.65,
+                          "sentiment": null,
+                          "sourceContext": null
+                        }
+                      ],
+                      "context": "- Had unresolved billing dispute in February\n- Has been a customer for 3 years",
+                      "tokenCount": 24
+                    }
+                  },
+                  "without_topic": {
+                    "summary": "Basic lookup (no topic)",
+                    "value": {
+                      "found": true,
+                      "isNewCustomer": false,
+                      "customer": {
+                        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                        "name": "Jane Doe",
+                        "phone": "+15551234567"
+                      },
+                      "memories": [
+                        {
+                          "id": "m1a2b3c4-d5e6-7890-abcd-ef1234567890",
+                          "content": "Prefers morning deliveries",
+                          "category": "preference",
+                          "memoryType": "preference"
+                        }
+                      ]
+                    }
+                  },
+                  "auto_create": {
+                    "summary": "Auto-created new customer",
+                    "value": {
+                      "found": true,
+                      "isNewCustomer": true,
+                      "customer": {
+                        "id": "f9e8d7c6-b5a4-3210-fedc-ba0987654321",
+                        "name": "New Caller",
+                        "phone": "+15559876543"
+                      },
+                      "memories": []
+                    }
+                  },
+                  "not_found": {
+                    "summary": "Customer not found (autoCreate=false)",
+                    "value": {
+                      "found": false,
+                      "customer": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid query parameter"
+          },
+          "401": {
+            "description": "Unauthorized — invalid or missing credentials"
+          }
+        }
+      }
+    },
+    "/customers/handoff": {
+      "get": {
+        "summary": "Cross-channel agent handoff context",
+        "description": "Synthesizes a customer's full cross-channel journey (chat, email, voice, SMS) into a single briefing for a human agent taking over: a chronological journey timeline, key memories, sentiment trend, open-issue detection, and an AI-written narrative summary.\n\nIdentify the customer by internal UUID, phone, email, or external ID — exactly like /customers/lookup. The customer is never auto-created.\n\n**narrative=false** skips the AI-written briefing (fast, structured data only). **fresh=true** bypasses the 10-minute cache.\n",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "query",
+            "name": "customerId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Internal customer UUID"
+          },
+          {
+            "in": "query",
+            "name": "phone",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Customer phone number"
+          },
+          {
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Customer email address"
+          },
+          {
+            "in": "query",
+            "name": "externalId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "External system identifier"
+          },
+          {
+            "in": "query",
+            "name": "narrative",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "true"
+            },
+            "description": "When \"false\", skip the AI narrative (structured data only)"
+          },
+          {
+            "in": "query",
+            "name": "fresh",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Bypass the cache and rebuild the briefing"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Handoff context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "found": {
+                      "type": "boolean"
+                    },
+                    "customer": {
+                      "type": "object",
+                      "nullable": true
+                    },
+                    "journey": {
+                      "type": "array",
+                      "description": "Chronological conversations across all channels",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "conversationId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "channel": {
+                            "type": "string",
+                            "enum": [
+                              "VOICE",
+                              "CHAT",
+                              "SMS",
+                              "EMAIL"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "ACTIVE",
+                              "COMPLETED",
+                              "ESCALATED",
+                              "ABANDONED"
+                            ]
+                          },
+                          "summary": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "outcome": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "sentiment": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "startedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    },
+                    "keyMemories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "content": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "channelSource": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    },
+                    "sentimentTrend": {
+                      "type": "object",
+                      "properties": {
+                        "direction": {
+                          "type": "string",
+                          "enum": [
+                            "declining",
+                            "improving",
+                            "stable",
+                            "unknown"
+                          ]
+                        },
+                        "current": {
+                          "type": "number",
+                          "nullable": true
+                        }
+                      }
+                    },
+                    "openIssue": {
+                      "type": "object",
+                      "properties": {
+                        "isOpen": {
+                          "type": "boolean"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "nullable": true,
+                          "enum": [
+                            "ESCALATED",
+                            "ACTIVE",
+                            "OUTCOME_UNRESOLVED"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      }
+                    },
+                    "narrative": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "AI-written agent briefing"
+                    },
+                    "narrativeSource": {
+                      "type": "string",
+                      "enum": [
+                        "llm",
+                        "fallback",
+                        "skipped"
+                      ]
+                    }
+                  }
+                },
+                "example": {
+                  "found": true,
+                  "customer": {
+                    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "name": "Ava Morgan",
+                    "email": "ava@example.com"
+                  },
+                  "journey": [
+                    {
+                      "channel": "CHAT",
+                      "status": "COMPLETED",
+                      "summary": "Reported damaged order A-4471; KB article didn't help",
+                      "outcome": "unresolved",
+                      "sentiment": -0.2
+                    },
+                    {
+                      "channel": "EMAIL",
+                      "status": "COMPLETED",
+                      "summary": "Followed up on replacement, no response",
+                      "sentiment": -0.5
+                    },
+                    {
+                      "channel": "VOICE",
+                      "status": "ESCALATED",
+                      "summary": "Called for manager, churn risk",
+                      "sentiment": -0.7
+                    }
+                  ],
+                  "openIssue": {
+                    "isOpen": true,
+                    "reason": "ESCALATED",
+                    "summary": "Damaged order A-4471 — needs replacement"
+                  },
+                  "sentimentTrend": {
+                    "direction": "declining",
+                    "current": -0.7
+                  },
+                  "narrative": "Ava first contacted via chat about a damaged espresso machine (order A-4471); the KB article didn't help. She emailed twice with no resolution and is considering canceling her premium plan. She called and was escalated — the open issue is the replacement for order A-4471.",
+                  "narrativeSource": "llm"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid query parameter"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/customers": {
+      "post": {
+        "summary": "Create a new customer",
+        "description": "Create a customer profile for an organization. At least one of email, phone, or externalId must be provided.\n",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Customer display name"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Customer email address"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "description": "Customer phone number"
+                  },
+                  "externalId": {
+                    "type": "string",
+                    "description": "External system identifier"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Arbitrary key-value metadata"
+                  }
+                }
+              },
+              "example": {
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+                "phone": "+15551234567",
+                "externalId": "CRM-12345",
+                "metadata": {
+                  "tier": "gold"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Customer created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "externalId": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — at least one identifier required"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Customer with this identifier already exists"
+          }
+        }
+      },
+      "get": {
+        "summary": "List customers",
+        "description": "Retrieve a paginated list of customers for the organization.",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Number of items per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of customers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "phone": {
+                            "type": "string"
+                          },
+                          "externalId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/customers/{id}": {
+      "get": {
+        "summary": "Get a single customer",
+        "description": "Retrieve full details for a specific customer by ID.",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "externalId": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a customer",
+        "description": "Update one or more fields on an existing customer.",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  }
+                }
+              },
+              "example": {
+                "name": "Jane Smith",
+                "metadata": {
+                  "tier": "platinum"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Customer updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "externalId": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          },
+          "409": {
+            "description": "Conflict — identifier already in use by another customer"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a customer",
+        "description": "Permanently delete a customer and all associated data.",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
+    "/customers/conversations/end": {
+      "post": {
+        "summary": "End a conversation (flat — no path params)",
+        "description": "Same as PATCH /customers/{id}/conversations/{cid} but accepts customerId and conversationId in the request body. Designed for bot platforms that don't support dynamic path parameters or PATCH method.\n",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "customerId",
+                  "conversationId"
+                ],
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "conversationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "outcome": {
+                    "type": "string"
+                  }
+                }
+              },
+              "example": {
+                "customerId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "conversationId": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
+                "outcome": "Booked DXB-LHR business class for March 15"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversation ended"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "404": {
+            "description": "Customer or conversation not found"
+          }
+        }
+      }
+    },
+    "/customers/conversations/escalate": {
+      "post": {
+        "summary": "Escalate a conversation (flat — no path params)",
+        "description": "Same as PATCH /customers/{id}/conversations/{cid}/escalate but accepts customerId and conversationId in the request body.\n",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "customerId",
+                  "conversationId"
+                ],
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "conversationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversation escalated"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "404": {
+            "description": "Customer or conversation not found"
+          }
+        }
+      }
+    },
+    "/customers/{id}/handoff": {
+      "get": {
+        "summary": "Cross-channel agent handoff context (by customer ID)",
+        "description": "Same as GET /customers/handoff but addressed by internal customer UUID.",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          },
+          {
+            "in": "query",
+            "name": "narrative",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "fresh",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Handoff context (see GET /customers/handoff)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/customers/{id}/memories/ingest": {
+      "post": {
+        "summary": "Ingest a completed conversation for memory extraction",
+        "description": "Batch import endpoint — enqueue a completed conversation (full message history including both user and assistant turns) for asynchronous memory extraction. Use this for historical imports, CRM sync, or post-processing third-party transcripts. For real-time capture use POST /api/v1/capture instead.\n",
+        "tags": [
+          "Customer Memories"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "messages"
+                ],
+                "properties": {
+                  "messages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "role",
+                        "content"
+                      ],
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "assistant"
+                          ]
+                        },
+                        "content": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "VOICE",
+                      "CHAT",
+                      "SMS",
+                      "EMAIL"
+                    ],
+                    "default": "CHAT"
+                  }
+                }
+              },
+              "example": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "I prefer morning deliveries before 9 AM."
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "Got it! I'll note your preference for morning deliveries."
+                  }
+                ],
+                "channel": "CHAT"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Capture request accepted and queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "captureId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued"
+                      ]
+                    }
+                  }
+                },
+                "example": {
+                  "captureId": "c1d2e3f4-a5b6-7890-cdef-1234567890ab",
+                  "status": "queued"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — messages array required"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
+    "/customers/{id}/memories/lookup": {
+      "get": {
+        "summary": "Look up relevant memories for a topic",
+        "description": "Retrieve contextually relevant memories for a given topic, formatted and ready to inject into an LLM prompt. Uses vector similarity search combined with importance and recency scoring.\n",
+        "tags": [
+          "Customer Memories"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          },
+          {
+            "in": "query",
+            "name": "topic",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The topic or query to find relevant memories for"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Relevant memories formatted for LLM injection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "context": {
+                      "type": "string",
+                      "description": "Pre-formatted context string for LLM prompt injection"
+                    },
+                    "memories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "fact": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "importance": {
+                            "type": "number"
+                          },
+                          "score": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "tokenCount": {
+                      "type": "integer",
+                      "description": "Total token count of the context string"
+                    }
+                  }
+                },
+                "example": {
+                  "context": "Known about this customer:\n- Prefers morning deliveries before 9 AM\n- Located in New York",
+                  "memories": [
+                    {
+                      "id": "m1a2b3c4-d5e6-7890-abcd-ef1234567890",
+                      "fact": "Prefers morning deliveries before 9 AM",
+                      "category": "preference",
+                      "importance": 0.85,
+                      "score": 0.78
+                    }
+                  ],
+                  "tokenCount": 42
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing topic query parameter"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
+    "/customers/memories/lookup": {
+      "get": {
+        "summary": "Look up relevant memories by identity (no UUID needed)",
+        "description": "Retrieve contextually relevant memories for a topic using phone, email, or external ID to identify the customer — no internal UUID required. Useful for bot integrations that only have a phone number or email.\n",
+        "tags": [
+          "Customer Memories"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "query",
+            "name": "topic",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The topic or query to find relevant memories for"
+          },
+          {
+            "in": "query",
+            "name": "phone",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Customer phone number (one of phone/email/externalId required)"
+          },
+          {
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Customer email address (one of phone/email/externalId required)"
+          },
+          {
+            "in": "query",
+            "name": "externalId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "External system identifier (one of phone/email/externalId required)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Relevant memories formatted for LLM injection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryContext"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing topic or identity params"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
+    "/customers/{id}/memories": {
+      "get": {
+        "summary": "List customer memories",
+        "description": "Retrieve a paginated list of stored memories for a customer.",
+        "tags": [
+          "Customer Memories"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Number of items per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of memories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "fact": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "importance": {
+                            "type": "number"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
+    "/customers/{id}/memories/{memId}": {
+      "patch": {
+        "summary": "Update a customer memory",
+        "description": "Update fields on an existing memory entry.",
+        "tags": [
+          "Customer Memories"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          },
+          {
+            "in": "path",
+            "name": "memId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Memory ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fact": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "importance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              },
+              "example": {
+                "fact": "Prefers afternoon deliveries after 2 PM",
+                "importance": 0.9
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Memory updated successfully"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer or memory not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a customer memory",
+        "description": "Permanently remove a specific memory entry.",
+        "tags": [
+          "Customer Memories"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          },
+          {
+            "in": "path",
+            "name": "memId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Memory ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer or memory not found"
+          }
+        }
+      }
+    },
+    "/customers/{id}/conversations": {
+      "post": {
+        "summary": "Start a conversation",
+        "description": "Begin a new conversation session for a customer.",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "channel"
+                ],
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "VOICE",
+                      "CHAT",
+                      "SMS",
+                      "EMAIL"
+                    ]
+                  }
+                }
+              },
+              "example": {
+                "channel": "VOICE"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Conversation started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "customerId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "channel": {
+                      "type": "string",
+                      "enum": [
+                        "VOICE",
+                        "CHAT",
+                        "SMS",
+                        "EMAIL"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACTIVE"
+                      ]
+                    }
+                  }
+                },
+                "example": {
+                  "id": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
+                  "customerId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  "channel": "VOICE",
+                  "status": "ACTIVE"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — channel is required"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      },
+      "get": {
+        "summary": "List conversations",
+        "description": "Retrieve a paginated list of conversations for a customer.",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Number of items per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of conversations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "channel": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "startedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "endedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
+    "/customers/{id}/conversations/{cid}": {
+      "patch": {
+        "summary": "End a conversation",
+        "description": "Mark a conversation as completed with an optional outcome note.",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          },
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Conversation ID"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "outcome": {
+                    "type": "string",
+                    "description": "Summary of conversation outcome"
+                  }
+                }
+              },
+              "example": {
+                "outcome": "Customer issue resolved — refund processed"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversation ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "COMPLETED"
+                      ]
+                    },
+                    "endedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "example": {
+                  "id": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
+                  "status": "COMPLETED",
+                  "endedAt": "2026-01-15T11:45:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer or conversation not found"
+          }
+        }
+      }
+    },
+    "/customers/{id}/conversations/{cid}/escalate": {
+      "patch": {
+        "summary": "Escalate a conversation",
+        "description": "Mark a conversation as escalated, optionally providing a reason.",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Organization ID (required with Bearer auth)"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Customer ID"
+          },
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Conversation ID"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "Reason for escalation"
+                  }
+                }
+              },
+              "example": {
+                "reason": "Customer requested a supervisor"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversation escalated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ESCALATED"
+                      ]
+                    }
+                  }
+                },
+                "example": {
+                  "id": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
+                  "status": "ESCALATED"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Customer or conversation not found"
+          }
+        }
+      }
+    },
+    "/embed/tokens": {
+      "post": {
+        "summary": "Mint a short-lived embed token for the agent handoff panel",
+        "description": "Your backend calls this with an org API key to mint a read-only, short-lived token pinned to one customer. Pass the token to the embeddable agent panel iframe — it can only read that customer's handoff context, nothing else.\n",
+        "tags": [
+          "Embed"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "ttlSeconds": {
+                    "type": "integer",
+                    "minimum": 60,
+                    "maximum": 86400,
+                    "default": 3600
+                  }
+                }
+              },
+              "example": {
+                "email": "ava@example.com",
+                "ttlSeconds": 3600
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Embed token minted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "expiresIn": {
+                      "type": "integer"
+                    },
+                    "scope": {
+                      "type": "string",
+                      "example": "handoff:read"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — at least one identifier required"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/embed/handoff": {
+      "get": {
+        "summary": "Fetch handoff context with an embed token (public)",
+        "description": "Token-authenticated endpoint used by the embeddable agent panel. The org and customer identity come from the verified token — no API key or session required.\n",
+        "tags": [
+          "Embed"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Embed token from POST /embed/tokens"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Handoff context (see GET /customers/handoff)"
+          },
+          "401": {
+            "description": "Invalid or expired embed token"
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}
