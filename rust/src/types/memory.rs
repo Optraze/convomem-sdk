@@ -83,7 +83,7 @@ pub struct MemoryListResponse {
 #[serde(rename_all = "camelCase")]
 pub struct MemoryUpdateRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fact: Option<String>,
+    pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,7 +93,7 @@ pub struct MemoryUpdateRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryAddRequest {
-    pub fact: String,
+    pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

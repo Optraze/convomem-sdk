@@ -220,16 +220,16 @@ export class MemoriesResource {
    *
    * @param customerId - The customer UUID.
    * @param memId - The memory UUID to update.
-   * @param request - The update payload with fields to change (fact, category, importance).
+   * @param request - The update payload with fields to change (content, category).
    * @param opts - Optional settings.
    * @param opts.signal - An {@link AbortSignal} to cancel the request.
-   * @returns A promise that resolves when the update is complete.
+   * @returns The updated {@link Memory} record.
    *
    * @example
    * ```ts
    * await client.memories.update("cust_abc123", "mem_xyz789", {
-   *   fact: "Prefers email communication over phone calls",
-   *   importance: 0.9,
+   *   content: "Prefers email communication over phone calls",
+   *   category: "preference",
    * });
    * ```
    */
@@ -238,8 +238,8 @@ export class MemoriesResource {
     memId: string,
     request: MemoryUpdateRequest,
     opts?: { signal?: AbortSignal },
-  ): Promise<void> {
-    return await this.#client.request(
+  ): Promise<Memory> {
+    return await this.#client.request<Memory>(
       "PATCH",
       `/customers/${customerId}/memories/${memId}`,
       { body: request, signal: opts?.signal },
@@ -279,7 +279,7 @@ export class MemoriesResource {
    * pipeline. Use this for injecting known facts, preferences, or corrections.
    *
    * @param customerId - The customer UUID.
-   * @param request - The memory payload with fact text, optional category, importance, and memoryType.
+   * @param request - The memory payload with content text and optional category.
    * @param opts - Optional settings.
    * @param opts.signal - An {@link AbortSignal} to cancel the request.
    * @returns The newly created {@link Memory} record.
@@ -287,10 +287,8 @@ export class MemoriesResource {
    * @example
    * ```ts
    * const memory = await client.memories.add("cust_abc123", {
-   *   fact: "Customer is a VIP account holder",
+   *   content: "Customer is a VIP account holder",
    *   category: "status",
-   *   importance: 0.95,
-   *   memoryType: "fact",
    * });
    *
    * console.log(memory.id); // "mem_new123"

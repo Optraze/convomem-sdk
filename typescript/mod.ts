@@ -1,59 +1,67 @@
 /**
  * ConvoMem TypeScript SDK — the official client library for the ConvoMem API.
  *
- * This module is the main entry point for the SDK. It re-exports the
- * {@link ConvoMemClient} class, all API resource types, and error classes.
+ * **Primary entry point:** {@link ConvoMem} — flat, spec-compliant API where every
+ * method routes by identity automatically (UUID path vs. flat server-resolved route).
+ *
+ * **Advanced entry point:** {@link ConvoMemClient} — resource-based API
+ * (`client.customers.*`, `client.memories.*`, etc.) for fine-grained control.
  *
  * @example
  * ```ts
- * import { ConvoMemClient } from "convomem";
+ * import { ConvoMem } from "convomem";
  *
- * const client = new ConvoMemClient({ apiKey: "your-api-key" });
+ * const client = new ConvoMem({ apiKey: process.env.CONVOMEM_API_KEY });
  *
- * // List all customers
- * const { customers } = await client.customers.list();
+ * // Recall context before replying
+ * const { context } = await client.lookup(
+ *   "order status",
+ *   { email: "alice@example.com" },
+ *   { autoCreate: true },
+ * );
  *
- * // Add a memory for a customer
- * await client.memories.add({
- *   customerId: customers[0].id,
- *   content: "Prefers email over phone",
- * });
+ * // … generate reply …
  *
- * // Get insights dashboard
- * const dashboard = await client.insights.dashboard();
+ * // Capture the exchange (fire-and-forget)
+ * await client.capture(
+ *   [
+ *     { role: "user", content: "Where is my order?" },
+ *     { role: "assistant", content: "Your order ships tomorrow." },
+ *   ],
+ *   { email: "alice@example.com" },
+ *   { channel: "CHAT" },
+ * );
  * ```
  *
  * @module
  */
 
-/** The main ConvoMem API client. */
+/** Primary flat-API client (spec-compliant). */
+export { ConvoMem } from "./convomem.ts";
+
+/** Resource-based client for advanced use. */
 export { ConvoMemClient } from "./client.ts";
 
 /**
- * All type definitions for the ConvoMem API.
+ * Type definitions for the ConvoMem API.
  *
- * Includes request/response types for every resource domain:
  * - **Capture** — {@link CaptureRequest}, {@link CaptureResponse}
- * - **Conversations** — {@link Conversation}, {@link ConversationListResponse}, {@link ConversationEndRequest}, {@link ConversationEndResponse}, {@link ConversationEscalateRequest}, {@link ConversationEscalateResponse}
  * - **Config** — {@link ConvoMemConfig}
- * - **Customers** — {@link Customer}, {@link CustomerCreateRequest}, {@link CustomerListResponse}, {@link CustomerLookupParams}, {@link CustomerLookupResponse}, {@link CustomerUpdateRequest}
+ * - **Conversations** — {@link Conversation}, {@link ConversationListResponse}, {@link ConversationEndRequest}, {@link ConversationEndResponse}, {@link ConversationEscalateRequest}, {@link ConversationEscalateResponse}
+ * - **Customers** — {@link Customer}, {@link CustomerCreateRequest}, {@link CustomerIdentity}, {@link CustomerListResponse}, {@link CustomerLookupParams}, {@link CustomerLookupResponse}, {@link CustomerStats}, {@link CustomerUpdateRequest}
  * - **Embed** — {@link EmbedTokenRequest}, {@link EmbedTokenResponse}
  * - **Entities** — {@link Entity}, {@link EntityGraphResponse}, {@link EntityListResponse}, {@link EntitySearchParams}
- * - **Handoff** — {@link HandoffParams}, {@link HandoffResponse}
- * - **Insights** — {@link Insight}, {@link InsightActionRequest}, {@link InsightListResponse}, {@link InsightsDashboard}
- * - **Memories** — {@link Memory}, {@link MemoryAddRequest}, {@link MemoryContext}, {@link MemoryInAction}, {@link MemoryIngestRequest}, {@link MemoryListResponse}, {@link MemoryLookupParams}, {@link MemoryUpdateRequest}
- * - **Orgs** — {@link Org}, {@link OrgApiKey}, {@link OrgApiKeyCreateRequest}, {@link OrgAuditLog}, {@link OrgCreateRequest}, {@link OrgMember}, {@link OrgMemberAddRequest}, {@link OrgMemberUpdateRequest}, {@link OrgUpdateRequest}
- * - **Webhooks** — {@link Webhook}, {@link WebhookCreateRequest}, {@link WebhookUpdateRequest}
- * - **Analytics** — {@link BuyingSignal}, {@link ChannelBreakdown}, {@link Complaint}, {@link FrequentIssue}, {@link JourneyEntry}, {@link KeyMemory}, {@link PipelineStats}, {@link SentimentPoint}
  * - **Feedback** — {@link FeedbackLookupRequest}, {@link FeedbackLookupResponse}
+ * - **Handoff** — {@link HandoffParams}, {@link HandoffResponse}, {@link JourneyEntry}, {@link KeyMemory}
+ * - **Memories** — {@link Memory}, {@link MemoryAddRequest}, {@link MemoryContext}, {@link MemoryIngestRequest}, {@link MemoryListResponse}, {@link MemoryLookupParams}, {@link MemoryUpdateRequest}
+ * - **Merge** — {@link MergeCandidate}
  */
 export type {
-  BuyingSignal,
   // Capture
   CaptureRequest,
   CaptureResponse,
-  ChannelBreakdown,
-  Complaint,
+  // Config
+  ConvoMemConfig,
   // Conversations
   Conversation,
   ConversationEndRequest,
@@ -61,14 +69,14 @@ export type {
   ConversationEscalateRequest,
   ConversationEscalateResponse,
   ConversationListResponse,
-  // Config
-  ConvoMemConfig,
+  // Customers
   Customer,
   CustomerCreateRequest,
+  CustomerIdentity,
   CustomerListResponse,
-  // Customers
   CustomerLookupParams,
   CustomerLookupResponse,
+  CustomerStats,
   CustomerUpdateRequest,
   // Embed
   EmbedTokenRequest,
@@ -78,44 +86,24 @@ export type {
   EntityGraphResponse,
   EntityListResponse,
   EntitySearchParams,
+  // Feedback
   FeedbackLookupRequest,
   FeedbackLookupResponse,
-  FrequentIssue,
   // Handoff
   HandoffParams,
   HandoffResponse,
-  Insight,
-  InsightActionRequest,
-  InsightListResponse,
-  // Insights
-  InsightsDashboard,
   JourneyEntry,
   KeyMemory,
+  // Memories
   Memory,
   MemoryAddRequest,
   MemoryContext,
-  MemoryInAction,
-  // Memories
   MemoryIngestRequest,
   MemoryListResponse,
   MemoryLookupParams,
   MemoryUpdateRequest,
-  // Orgs
-  Org,
-  OrgApiKey,
-  OrgApiKeyCreateRequest,
-  OrgAuditLog,
-  OrgCreateRequest,
-  OrgMember,
-  OrgMemberAddRequest,
-  OrgMemberUpdateRequest,
-  OrgUpdateRequest,
-  PipelineStats,
-  SentimentPoint,
-  // Webhooks
-  Webhook,
-  WebhookCreateRequest,
-  WebhookUpdateRequest,
+  // Merge
+  MergeCandidate,
 } from "./types.ts";
 
 /** Error classes for handling ConvoMem API and SDK errors. */

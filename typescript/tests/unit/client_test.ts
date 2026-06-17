@@ -40,16 +40,8 @@ describe("ConvoMemClient Unit", () => {
   });
 
   describe("constructor", () => {
-    it("creates client with default base URL", () => {
+    it("creates client with api key", () => {
       const c = new ConvoMemClient({ apiKey: "key" });
-      assertExists(c);
-    });
-
-    it("creates client with custom base URL", () => {
-      const c = new ConvoMemClient({
-        apiKey: "key",
-        baseUrl: "http://localhost:8080/api/v1",
-      });
       assertExists(c);
     });
   });
@@ -191,7 +183,7 @@ describe("ConvoMemClient Unit", () => {
 
     it("sends GET /customers/{id}/memories", async () => {
       const mock = mockFetch({
-        memories: [{ id: "mem-1", fact: "Prefers morning deliveries" }],
+        memories: [{ id: "mem-1", content: "Prefers morning deliveries" }],
         page: 1,
         limit: 20,
         total: 1,
@@ -211,7 +203,7 @@ describe("ConvoMemClient Unit", () => {
       const mock = mockFetch({
         context: "Known facts...",
         tokenCount: 42,
-        memories: [{ id: "mem-1", fact: "Prefers morning deliveries" }],
+        memories: [{ id: "mem-1", content: "Prefers morning deliveries" }],
       });
 
       const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
@@ -230,7 +222,7 @@ describe("ConvoMemClient Unit", () => {
       const mock = mockFetch(null, 200);
 
       const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
-      await c.memories.update("cust-123", "mem-1", { fact: "Updated fact" });
+      await c.memories.update("cust-123", "mem-1", { content: "Updated content" });
 
       assertEquals(mock.calls[0].init?.method, "PATCH");
       assertEquals(mock.calls[0].url.includes("/memories/mem-1"), true);
@@ -435,17 +427,13 @@ describe("ConvoMemClient Unit", () => {
     it("includes the request URL in the error", async () => {
       const mock = mockFetch({ error: "Not found" }, 404);
 
-      const c = new ConvoMemClient({
-        apiKey: "test-key",
-        baseUrl: "https://api.example.com/api/v1",
-        fetch: mock.fetch,
-      });
+      const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
 
       const err = await assertRejects(
         () => c.customers.get("cust-123"),
         ConvoMemApiError,
       );
-      assertEquals(err.url, "https://api.example.com/api/v1/customers/cust-123");
+      assertEquals(err.url, "https://api.convomem.com/api/v1/customers/cust-123");
     });
   });
 

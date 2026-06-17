@@ -36,40 +36,30 @@ class AsyncConvoMemClient:
         self,
         api_key: str,
         *,
-        base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30.0,
         max_retries: int = 0,
         retry_delay: float = 1.0,
     ) -> None:
         self._api_key = api_key
-        self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._http = httpx.AsyncClient(
-            base_url=self._base_url,
+            base_url=DEFAULT_BASE_URL,
             headers={"X-API-Key": self._api_key},
             timeout=httpx.Timeout(timeout),
         )
 
-        # Instantiate async resources
+        # Instantiate integration-scope resources
         from convomem.resources.conversations import AsyncConversationsResource
         from convomem.resources.customers import AsyncCustomersResource
         from convomem.resources.embed import AsyncEmbedResource
-        from convomem.resources.entities import AsyncEntitiesResource
-        from convomem.resources.insights import AsyncInsightsResource
         from convomem.resources.memories import AsyncMemoriesResource
-        from convomem.resources.orgs import AsyncOrgsResource
-        from convomem.resources.webhooks import AsyncWebhooksResource
 
         self.customers = AsyncCustomersResource(self)
         self.memories = AsyncMemoriesResource(self)
         self.conversations = AsyncConversationsResource(self)
         self.embed = AsyncEmbedResource(self)
-        self.entities = AsyncEntitiesResource(self)
-        self.orgs = AsyncOrgsResource(self)
-        self.insights = AsyncInsightsResource(self)
-        self.webhooks = AsyncWebhooksResource(self)
 
     async def capture(self, request: CaptureRequest) -> CaptureResponse:
         """Capture a message and auto-manage session."""

@@ -30,40 +30,30 @@ class ConvoMemClient:
         self,
         api_key: str,
         *,
-        base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30.0,
         max_retries: int = 0,
         retry_delay: float = 1.0,
     ) -> None:
         self._api_key = api_key
-        self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._http = httpx.Client(
-            base_url=self._base_url,
+            base_url=DEFAULT_BASE_URL,
             headers={"X-API-Key": self._api_key},
             timeout=httpx.Timeout(timeout),
         )
 
-        # Instantiate resources
+        # Instantiate integration-scope resources
         from convomem.resources.conversations import ConversationsResource
         from convomem.resources.customers import CustomersResource
         from convomem.resources.embed import EmbedResource
-        from convomem.resources.entities import EntitiesResource
-        from convomem.resources.insights import InsightsResource
         from convomem.resources.memories import MemoriesResource
-        from convomem.resources.orgs import OrgsResource
-        from convomem.resources.webhooks import WebhooksResource
 
         self.customers = CustomersResource(self)
         self.memories = MemoriesResource(self)
         self.conversations = ConversationsResource(self)
         self.embed = EmbedResource(self)
-        self.entities = EntitiesResource(self)
-        self.orgs = OrgsResource(self)
-        self.insights = InsightsResource(self)
-        self.webhooks = WebhooksResource(self)
 
     def capture(self, request: CaptureRequest) -> CaptureResponse:
         """Capture a message and auto-manage session."""

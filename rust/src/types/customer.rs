@@ -1,6 +1,57 @@
 use serde::{Deserialize, Serialize};
 
-use super::{Memory};
+use super::Memory;
+
+/// Routing identity for any ConvoMem call.
+///
+/// Provide exactly one field (or `customer_id` for the most direct path).
+/// When `customer_id` is set the SDK uses the `/customers/:id/…` path-based
+/// route.  Otherwise the server resolves the customer from the remaining fields.
+#[derive(Debug, Clone, Default)]
+pub struct CustomerIdentity {
+    pub customer_id: Option<String>,
+    pub external_id: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+}
+
+impl CustomerIdentity {
+    pub fn from_id(customer_id: impl Into<String>) -> Self {
+        Self { customer_id: Some(customer_id.into()), ..Default::default() }
+    }
+    pub fn from_email(email: impl Into<String>) -> Self {
+        Self { email: Some(email.into()), ..Default::default() }
+    }
+    pub fn from_phone(phone: impl Into<String>) -> Self {
+        Self { phone: Some(phone.into()), ..Default::default() }
+    }
+    pub fn from_external_id(external_id: impl Into<String>) -> Self {
+        Self { external_id: Some(external_id.into()), ..Default::default() }
+    }
+}
+
+/// Aggregate customer statistics for the organization.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerStats {
+    pub total_customers: u32,
+    pub total_memories: u32,
+    pub avg_memories: f64,
+    pub total_conversations: u32,
+    pub active7d: u32,
+    pub positive: u32,
+    pub neutral: u32,
+    pub negative: u32,
+}
+
+/// A pair of customer profiles flagged as potential duplicates.
+#[derive(Debug, Deserialize)]
+pub struct MergeCandidate {
+    pub customer: Customer,
+    pub candidate: Customer,
+    #[serde(default)]
+    pub similarity: Option<f64>,
+}
 
 #[derive(Debug, Default, Serialize)]
 pub struct CustomerLookupParams {

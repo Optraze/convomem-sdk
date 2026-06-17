@@ -5,9 +5,29 @@ All models use camelCase aliases to match the JSON API contract.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# ── Identity ─────────────────────────────────────────────
+
+
+@dataclass
+class CustomerIdentity:
+    """Routing identity for any ConvoMem call.
+
+    Supply exactly one field (or ``customer_id`` for the fastest path).
+    When ``customer_id`` is given the SDK uses the ``/customers/:id/…``
+    path-based route.  Otherwise the server resolves the customer from the
+    remaining fields.
+    """
+
+    customer_id: str | None = None
+    external_id: str | None = None
+    email: str | None = None
+    phone: str | None = None
+
 
 # ── Config ──────────────────────────────────────────────
 
@@ -243,6 +263,51 @@ class CustomerListResponse(BaseModel):
 
     total: int
     """Total number of matching customers."""
+
+
+class CustomerStats(BaseModel):
+    """Aggregate customer statistics for the organization."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    total_customers: int = Field(alias="totalCustomers")
+    """Total number of customers."""
+
+    total_memories: int = Field(alias="totalMemories")
+    """Total number of memories."""
+
+    avg_memories: float = Field(alias="avgMemories")
+    """Average memories per customer."""
+
+    total_conversations: int = Field(alias="totalConversations")
+    """Total number of conversations."""
+
+    active7d: int
+    """Customers active in the last 7 days."""
+
+    positive: int
+    """Customers with positive sentiment."""
+
+    neutral: int
+    """Customers with neutral sentiment."""
+
+    negative: int
+    """Customers with negative sentiment."""
+
+
+class MergeCandidate(BaseModel):
+    """A pair of customer profiles flagged as potential duplicates."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    customer: Customer
+    """Primary customer record."""
+
+    candidate: Customer
+    """Potential duplicate customer record."""
+
+    similarity: float | None = None
+    """Similarity score (0.0 to 1.0), or None if unavailable."""
 
 
 # ── Handoff ─────────────────────────────────────────────
@@ -562,8 +627,8 @@ class MemoryUpdateRequest(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    fact: str | None = Field(default=None, alias="fact")
-    """Updated fact text."""
+    content: str | None = Field(default=None, alias="content")
+    """Updated memory text."""
 
     category: str | None = Field(default=None, alias="category")
     """Updated category."""
@@ -577,8 +642,8 @@ class MemoryAddRequest(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    fact: str
-    """Fact text to store."""
+    content: str
+    """Memory text to store."""
 
     category: str | None = Field(default=None, alias="category")
     """Memory category."""
@@ -730,506 +795,5 @@ class EmbedTokenResponse(BaseModel):
     """Token scope (e.g. "customer")."""
 
 
-# ── Entities ────────────────────────────────────────────
-
-
-class Entity(BaseModel):
-    """An entity in the knowledge graph."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    """Unique entity identifier."""
-
-    org_id: str | None = Field(default=None, alias="orgId")
-    """Organization ID this entity belongs to."""
-
-    name: str
-    """Entity name."""
-
-    type: str
-    """Entity type (e.g. "company", "product", "person")."""
-
-    properties: dict[str, Any] | None = Field(default=None, alias="properties")
-    """Arbitrary properties as key-value pairs."""
-
-    created_at: str | None = Field(default=None, alias="createdAt")
-    """ISO 8601 timestamp of entity creation."""
-
-    updated_at: str | None = Field(default=None, alias="updatedAt")
-    """ISO 8601 timestamp of last update."""
-
-
-class EntityListResponse(BaseModel):
-    """Paginated list of entities."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    entities: list[Entity]
-    """Array of entity records."""
-
-    page: int
-    """Current page number (1-indexed)."""
-
-    limit: int
-    """Maximum items per page."""
-
-    total: int
-    """Total number of matching entities."""
-
-
-class EntitySearchParams(BaseModel):
-    """Parameters for searching entities."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    query: str
-    """Search query text."""
-
-    type: str | None = Field(default=None, alias="type")
-    """Filter by entity type."""
-
-    limit: int | None = Field(default=None, alias="limit")
-    """Maximum number of results to return."""
-
-
-class EntityGraphNode(BaseModel):
-    """A node in an entity relationship graph."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    """Entity identifier."""
-
-    name: str
-    """Entity name."""
-
-    type: str
-    """Entity type."""
-
-
-class EntityGraphEdge(BaseModel):
-    """An edge in an entity relationship graph."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    source: str
-    """Source entity identifier."""
-
-    target: str
-    """Target entity identifier."""
-
-    relationship: str
-    """Relationship type."""
-
-
-class EntityGraphResponse(BaseModel):
-    """Response containing an entity relationship graph."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    nodes: list[EntityGraphNode]
-    """Graph nodes (entities)."""
-
-    edges: list[EntityGraphEdge]
-    """Graph edges (relationships between entities)."""
-
-
-# ── Orgs ────────────────────────────────────────────────
-
-
-class Org(BaseModel):
-    """An organization in the ConvoMem platform.
-
-    Organizations are the top-level tenant boundary. All customers, memories,
-    conversations, and API keys are scoped to an organization.
-    """
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    """Unique organization identifier."""
-
-    name: str
-    """Organization display name."""
-
-    plan: str | None = Field(default=None, alias="plan")
-    """Subscription plan (e.g. "free", "pro", "enterprise")."""
-
-    created_at: str | None = Field(default=None, alias="createdAt")
-    """ISO 8601 timestamp of organization creation."""
-
-    updated_at: str | None = Field(default=None, alias="updatedAt")
-    """ISO 8601 timestamp of last update."""
-
-
-class OrgCreateRequest(BaseModel):
-    """Request payload for creating a new organization."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: str
-    """Organization display name."""
-
-    plan: str | None = Field(default=None, alias="plan")
-    """Subscription plan."""
-
-
-class OrgUpdateRequest(BaseModel):
-    """Request payload for updating an organization."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: str | None = Field(default=None, alias="name")
-    """Organization display name."""
-
-    plan: str | None = Field(default=None, alias="plan")
-    """Subscription plan."""
-
-
-class OrgMember(BaseModel):
-    """A member of an organization."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    uid: str
-    """User identifier."""
-
-    role: Literal["owner", "admin", "member", "viewer"]
-    """Member role within the organization."""
-
-    joined_at: str | None = Field(default=None, alias="joinedAt")
-    """ISO 8601 timestamp of when the member joined."""
-
-
-class OrgMemberAddRequest(BaseModel):
-    """Request payload for adding a member to an organization."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    uid: str
-    """User identifier to add."""
-
-    role: Literal["owner", "admin", "member", "viewer"]
-    """Role to assign."""
-
-
-class OrgMemberUpdateRequest(BaseModel):
-    """Request payload for updating a member's role."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    role: Literal["owner", "admin", "member", "viewer"]
-    """New role to assign."""
-
-
-class OrgApiKey(BaseModel):
-    """An API key belonging to an organization."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    """Unique API key identifier."""
-
-    name: str | None = Field(default=None, alias="name")
-    """Human-readable key name."""
-
-    key: str | None = Field(default=None, alias="key")
-    """The API key value (only shown on creation)."""
-
-    prefix: str | None = Field(default=None, alias="prefix")
-    """Key prefix for identification (e.g. "sk-org-abc...")."""
-
-    created_at: str | None = Field(default=None, alias="createdAt")
-    """ISO 8601 timestamp of key creation."""
-
-    last_used_at: str | None = Field(default=None, alias="lastUsedAt")
-    """ISO 8601 timestamp of last usage, or None if never used."""
-
-
-class OrgApiKeyCreateRequest(BaseModel):
-    """Request payload for creating a new organization API key."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: str | None = Field(default=None, alias="name")
-    """Human-readable key name."""
-
-
-class OrgAuditLog(BaseModel):
-    """An audit log entry for organization activity."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    """Unique audit log entry identifier."""
-
-    action: str
-    """Action performed (e.g. "member.added", "key.created")."""
-
-    actor: str | None = Field(default=None, alias="actor")
-    """Actor who performed the action."""
-
-    target: str | None = Field(default=None, alias="target")
-    """Target of the action."""
-
-    details: dict[str, Any] | None = Field(default=None, alias="details")
-    """Additional details as key-value pairs."""
-
-    created_at: str | None = Field(default=None, alias="createdAt")
-    """ISO 8601 timestamp of the action."""
-
-
-# ── Insights ────────────────────────────────────────────
-
-
-class InsightsDashboard(BaseModel):
-    """Aggregated dashboard statistics for an organization."""
-
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
-
-    total_customers: int | None = Field(default=None, alias="totalCustomers")
-    """Total number of customers."""
-
-    total_memories: int | None = Field(default=None, alias="totalMemories")
-    """Total number of memories."""
-
-    total_conversations: int | None = Field(default=None, alias="totalConversations")
-    """Total number of conversations."""
-
-    active_conversations: int | None = Field(default=None, alias="activeConversations")
-    """Number of currently active conversations."""
-
-    avg_sentiment: float | None = Field(default=None, alias="avgSentiment")
-    """Average sentiment score across all customers."""
-
-
-class BuyingSignal(BaseModel):
-    """A detected buying signal from customer conversations."""
-
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
-
-    id: str
-    """Unique signal identifier."""
-
-    customer_id: str | None = Field(default=None, alias="customerId")
-    """Customer UUID associated with this signal."""
-
-    signal: str
-    """Description of the detected buying signal."""
-
-    confidence: float | None = Field(default=None, alias="confidence")
-    """Confidence score (0.0 to 1.0)."""
-
-    detected_at: str | None = Field(default=None, alias="detectedAt")
-    """ISO 8601 timestamp of when the signal was detected."""
-
-
-class Complaint(BaseModel):
-    """A customer complaint record."""
-
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
-
-    id: str
-    """Unique complaint identifier."""
-
-    customer_id: str | None = Field(default=None, alias="customerId")
-    """Customer UUID associated with this complaint."""
-
-    content: str
-    """Complaint content text."""
-
-    category: str | None = Field(default=None, alias="category")
-    """Complaint category."""
-
-    severity: str | None = Field(default=None, alias="severity")
-    """Severity level."""
-
-    status: str | None = Field(default=None, alias="status")
-    """Complaint status."""
-
-    created_at: str | None = Field(default=None, alias="createdAt")
-    """ISO 8601 timestamp of complaint creation."""
-
-
-class FrequentIssue(BaseModel):
-    """A frequently occurring issue across conversations."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    issue: str
-    """Description of the issue."""
-
-    count: int
-    """Number of occurrences."""
-
-    percentage: float | None = Field(default=None, alias="percentage")
-    """Percentage of total conversations affected."""
-
-
-class MemoryInAction(BaseModel):
-    """A memory that was actively used during a conversation."""
-
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
-
-    id: str
-    """Memory identifier."""
-
-    fact: str
-    """Memory fact text."""
-
-    used_in_conversation: str | None = Field(default=None, alias="usedInConversation")
-    """Conversation where this memory was used."""
-
-    impact: str | None = Field(default=None, alias="impact")
-    """Description of the memory's impact."""
-
-
-class ChannelBreakdown(BaseModel):
-    """Channel distribution breakdown."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    channel: str
-    """Channel name."""
-
-    count: int
-    """Number of conversations on this channel."""
-
-    percentage: float | None = Field(default=None, alias="percentage")
-    """Percentage of total conversations."""
-
-
-class PipelineStats(BaseModel):
-    """Sales pipeline statistics."""
-
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
-
-    total_leads: int | None = Field(default=None, alias="totalLeads")
-    """Total number of leads."""
-
-    qualified_leads: int | None = Field(default=None, alias="qualifiedLeads")
-    """Number of qualified leads."""
-
-    conversion_rate: float | None = Field(default=None, alias="conversionRate")
-    """Conversion rate (0.0 to 1.0)."""
-
-
-class Insight(BaseModel):
-    """A generated insight record."""
-
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
-
-    id: str
-    """Unique insight identifier."""
-
-    type: str
-    """Insight type (e.g. "trend", "anomaly", "recommendation")."""
-
-    title: str | None = Field(default=None, alias="title")
-    """Short title for the insight."""
-
-    summary: str | None = Field(default=None, alias="summary")
-    """Detailed summary of the insight."""
-
-    data: dict[str, Any] | None = Field(default=None, alias="data")
-    """Structured data payload for the insight."""
-
-    created_at: str | None = Field(default=None, alias="createdAt")
-    """ISO 8601 timestamp of insight creation."""
-
-
-class InsightListResponse(BaseModel):
-    """Paginated list of insights."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    insights: list[Insight]
-    """Array of insight records."""
-
-    page: int
-    """Current page number (1-indexed)."""
-
-    limit: int
-    """Maximum items per page."""
-
-    total: int
-    """Total number of matching insights."""
-
-
-class InsightActionRequest(BaseModel):
-    """Request payload for performing an action on an insight."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    action: str
-    """Action to perform (e.g. "dismiss", "archive", "share")."""
-
-    notes: str | None = Field(default=None, alias="notes")
-    """Optional notes about the action."""
-
-
-# ── Webhooks ────────────────────────────────────────────
-
-
-class Webhook(BaseModel):
-    """A webhook subscription for receiving real-time event notifications."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    """Unique webhook identifier."""
-
-    org_id: str | None = Field(default=None, alias="orgId")
-    """Organization ID this webhook belongs to."""
-
-    url: str
-    """URL to receive webhook payloads."""
-
-    events: list[str] | None = Field(default=None, alias="events")
-    """Event types to subscribe to (e.g. ["conversation.created", "memory.ingested"])."""
-
-    secret: str | None = Field(default=None, alias="secret")
-    """HMAC secret for payload signature verification."""
-
-    active: bool | None = Field(default=None, alias="active")
-    """Whether this webhook is active."""
-
-    created_at: str | None = Field(default=None, alias="createdAt")
-    """ISO 8601 timestamp of webhook creation."""
-
-    updated_at: str | None = Field(default=None, alias="updatedAt")
-    """ISO 8601 timestamp of last update."""
-
-
-class WebhookCreateRequest(BaseModel):
-    """Request payload for creating a new webhook."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    url: str
-    """URL to receive webhook payloads."""
-
-    events: list[str] | None = Field(default=None, alias="events")
-    """Event types to subscribe to."""
-
-    secret: str | None = Field(default=None, alias="secret")
-    """HMAC secret for payload signature verification."""
-
-
-class WebhookUpdateRequest(BaseModel):
-    """Request payload for updating an existing webhook."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    url: str | None = Field(default=None, alias="url")
-    """URL to receive webhook payloads."""
-
-    events: list[str] | None = Field(default=None, alias="events")
-    """Event types to subscribe to."""
-
-    secret: str | None = Field(default=None, alias="secret")
-    """HMAC secret for payload signature verification."""
-
-    active: bool | None = Field(default=None, alias="active")
-    """Whether this webhook is active."""
+# (Admin-scope types removed: Entity, Org, Webhook, Insights.
+#  Integration API keys cannot call those endpoints.)

@@ -26,8 +26,6 @@
 export interface ConvoMemConfig {
   /** Organization API key (sk-org-...). The organization is resolved from this key. */
   apiKey: string;
-  /** Override base URL (default: https://api.convomem.com/api/v1) */
-  baseUrl?: string;
   /** Custom fetch implementation (for testing or Deno Deploy) */
   fetch?: typeof globalThis.fetch;
   /** Request timeout in milliseconds (default: 30000) */
@@ -389,10 +387,9 @@ export interface KeyMemory {
  * const memory: Memory = {
  *   id: "mem_abc123",
  *   content: "Customer prefers email communication over phone",
- *   fact: "Prefers email communication over phone",
  *   category: "preference",
  *   memoryType: "preference",
- *   importance: 0.8,
+ *   confidence: 0.9,
  *   sentiment: "positive",
  *   isSensitive: false,
  *   createdAt: "2025-03-10T14:22:00Z",
@@ -402,10 +399,8 @@ export interface KeyMemory {
 export interface Memory {
   /** Unique memory identifier */
   id: string;
-  /** Full memory content text */
+  /** Memory content text */
   content?: string;
-  /** Concise fact extracted from the memory */
-  fact?: string;
   /** Memory category (e.g. "preference", "issue", "purchase") */
   category?: string;
   /** Memory type classification */
@@ -494,26 +489,20 @@ export interface MemoryListResponse {
  * Request payload for updating an existing memory.
  */
 export interface MemoryUpdateRequest {
-  /** Updated fact text */
-  fact?: string;
+  /** Updated memory content text */
+  content?: string;
   /** Updated category */
   category?: string;
-  /** Updated importance score (0.0 to 1.0) */
-  importance?: number;
 }
 
 /**
  * Request payload for manually adding a memory.
  */
 export interface MemoryAddRequest {
-  /** Fact text to store */
-  fact: string;
+  /** Memory content text */
+  content: string;
   /** Memory category */
   category?: string;
-  /** Importance score (0.0 to 1.0) */
-  importance?: number;
-  /** Memory type classification */
-  memoryType?: string;
 }
 
 /**
@@ -722,337 +711,57 @@ export interface EntityGraphResponse {
   edges: Array<{ source: string; target: string; relationship: string }>;
 }
 
-// ── Orgs ────────────────────────────────────────────────
+// ── Identity ────────────────────────────────────────────
 
 /**
- * An organization in the ConvoMem platform.
+ * Customer identity selector.
  *
- * Organizations are the top-level tenant boundary. All customers, memories,
- * conversations, and API keys are scoped to an organization.
+ * Pass any one field to identify the customer. The API resolves the customer
+ * using the priority chain: `customerId` → `externalId` → `email` → `phone`.
  */
-export interface Org {
-  /** Unique organization identifier */
-  id: string;
-  /** Organization display name */
-  name: string;
-  /** Subscription plan (e.g. "free", "pro", "enterprise") */
-  plan?: string;
-  /** ISO 8601 timestamp of organization creation */
-  createdAt?: string;
-  /** ISO 8601 timestamp of last update */
-  updatedAt?: string;
+export interface CustomerIdentity {
+  /** ConvoMem customer UUID */
+  customerId?: string;
+  /** Your CRM / external system ID */
+  externalId?: string;
+  /** Customer email address */
+  email?: string;
+  /** Customer phone number (E.164 preferred, e.g. +14155550101) */
+  phone?: string;
 }
 
-/**
- * Request payload for creating a new organization.
- */
-export interface OrgCreateRequest {
-  /** Organization display name */
-  name: string;
-  /** Subscription plan */
-  plan?: string;
-}
+// ── Stats & merge candidates ─────────────────────────────
 
 /**
- * Request payload for updating an organization.
+ * Aggregate customer statistics for the organization.
  */
-export interface OrgUpdateRequest {
-  /** Organization display name */
-  name?: string;
-  /** Subscription plan */
-  plan?: string;
-}
-
-/**
- * A member of an organization.
- */
-export interface OrgMember {
-  /** User identifier */
-  uid: string;
-  /** Member role within the organization */
-  role: "owner" | "admin" | "member" | "viewer";
-  /** ISO 8601 timestamp of when the member joined */
-  joinedAt?: string;
-}
-
-/**
- * Request payload for adding a member to an organization.
- */
-export interface OrgMemberAddRequest {
-  /** User identifier to add */
-  uid: string;
-  /** Role to assign */
-  role: "owner" | "admin" | "member" | "viewer";
-}
-
-/**
- * Request payload for updating a member's role.
- */
-export interface OrgMemberUpdateRequest {
-  /** New role to assign */
-  role: "owner" | "admin" | "member" | "viewer";
-}
-
-/**
- * An API key belonging to an organization.
- */
-export interface OrgApiKey {
-  /** Unique API key identifier */
-  id: string;
-  /** Human-readable key name */
-  name?: string;
-  /** The API key value (only shown on creation) */
-  key?: string;
-  /** Key prefix for identification (e.g. "sk-org-abc...") */
-  prefix?: string;
-  /** ISO 8601 timestamp of key creation */
-  createdAt?: string;
-  /** ISO 8601 timestamp of last usage, or null if never used */
-  lastUsedAt?: string | null;
-}
-
-/**
- * Request payload for creating a new organization API key.
- */
-export interface OrgApiKeyCreateRequest {
-  /** Human-readable key name */
-  name?: string;
-}
-
-/**
- * An audit log entry for organization activity.
- */
-export interface OrgAuditLog {
-  /** Unique audit log entry identifier */
-  id: string;
-  /** Action performed (e.g. "member.added", "key.created") */
-  action: string;
-  /** Actor who performed the action */
-  actor?: string;
-  /** Target of the action */
-  target?: string;
-  /** Additional details as key-value pairs */
-  details?: Record<string, unknown>;
-  /** ISO 8601 timestamp of the action */
-  createdAt?: string;
-}
-
-// ── Insights ────────────────────────────────────────────
-
-/**
- * Aggregated dashboard statistics for an organization.
- */
-export interface InsightsDashboard {
+export interface CustomerStats {
   /** Total number of customers */
-  totalCustomers?: number;
-  /** Total number of memories */
-  totalMemories?: number;
+  totalCustomers: number;
+  /** Total number of memories stored */
+  totalMemories: number;
+  /** Average memories per customer */
+  avgMemories: number;
   /** Total number of conversations */
-  totalConversations?: number;
-  /** Number of currently active conversations */
-  activeConversations?: number;
-  /** Average sentiment score across all customers */
-  avgSentiment?: number;
-  /** Additional dashboard metrics */
-  [key: string]: unknown;
+  totalConversations: number;
+  /** Customers active in the last 7 days */
+  active7d: number;
+  /** Number of customers with positive sentiment */
+  positive: number;
+  /** Number of customers with neutral sentiment */
+  neutral: number;
+  /** Number of customers with negative sentiment */
+  negative: number;
 }
 
 /**
- * A detected buying signal from customer conversations.
+ * A pair of customer profiles flagged as potential duplicates.
  */
-export interface BuyingSignal {
-  /** Unique signal identifier */
-  id: string;
-  /** Customer UUID associated with this signal */
-  customerId?: string;
-  /** Description of the detected buying signal */
-  signal: string;
-  /** Confidence score (0.0 to 1.0) */
-  confidence?: number;
-  /** ISO 8601 timestamp of when the signal was detected */
-  detectedAt?: string;
-  /** Additional signal metadata */
-  [key: string]: unknown;
-}
-
-/**
- * A single data point in a sentiment time series.
- */
-export interface SentimentPoint {
-  /** ISO 8601 timestamp of the data point */
-  timestamp: string;
-  /** Sentiment score (-1.0 to 1.0) */
-  score: number;
-  /** Number of conversations contributing to this data point */
-  count?: number;
-}
-
-/**
- * A customer complaint record.
- */
-export interface Complaint {
-  /** Unique complaint identifier */
-  id: string;
-  /** Customer UUID associated with this complaint */
-  customerId?: string;
-  /** Complaint content text */
-  content: string;
-  /** Complaint category */
-  category?: string;
-  /** Severity level */
-  severity?: string;
-  /** Complaint status */
-  status?: string;
-  /** ISO 8601 timestamp of complaint creation */
-  createdAt?: string;
-  /** Additional complaint metadata */
-  [key: string]: unknown;
-}
-
-/**
- * A frequently occurring issue across conversations.
- */
-export interface FrequentIssue {
-  /** Description of the issue */
-  issue: string;
-  /** Number of occurrences */
-  count: number;
-  /** Percentage of total conversations affected */
-  percentage?: number;
-}
-
-/**
- * A memory that was actively used during a conversation.
- */
-export interface MemoryInAction {
-  /** Memory identifier */
-  id: string;
-  /** Memory fact text */
-  fact: string;
-  /** Conversation where this memory was used */
-  usedInConversation?: string;
-  /** Description of the memory's impact */
-  impact?: string;
-  /** Additional metadata */
-  [key: string]: unknown;
-}
-
-/**
- * Channel distribution breakdown.
- */
-export interface ChannelBreakdown {
-  /** Channel name */
-  channel: string;
-  /** Number of conversations on this channel */
-  count: number;
-  /** Percentage of total conversations */
-  percentage?: number;
-}
-
-/**
- * Sales pipeline statistics.
- */
-export interface PipelineStats {
-  /** Total number of leads */
-  totalLeads?: number;
-  /** Number of qualified leads */
-  qualifiedLeads?: number;
-  /** Conversion rate (0.0 to 1.0) */
-  conversionRate?: number;
-  /** Additional pipeline metrics */
-  [key: string]: unknown;
-}
-
-/**
- * A generated insight record.
- */
-export interface Insight {
-  /** Unique insight identifier */
-  id: string;
-  /** Insight type (e.g. "trend", "anomaly", "recommendation") */
-  type: string;
-  /** Short title for the insight */
-  title?: string;
-  /** Detailed summary of the insight */
-  summary?: string;
-  /** Structured data payload for the insight */
-  data?: Record<string, unknown>;
-  /** ISO 8601 timestamp of insight creation */
-  createdAt?: string;
-  /** Additional insight metadata */
-  [key: string]: unknown;
-}
-
-/**
- * Paginated list of insights.
- */
-export interface InsightListResponse {
-  /** Array of insight records */
-  insights: Insight[];
-  /** Current page number (1-indexed) */
-  page: number;
-  /** Maximum items per page */
-  limit: number;
-  /** Total number of matching insights */
-  total: number;
-}
-
-/**
- * Request payload for performing an action on an insight.
- */
-export interface InsightActionRequest {
-  /** Action to perform (e.g. "dismiss", "archive", "share") */
-  action: string;
-  /** Optional notes about the action */
-  notes?: string;
-}
-
-// ── Webhooks ────────────────────────────────────────────
-
-/**
- * A webhook subscription for receiving real-time event notifications.
- */
-export interface Webhook {
-  /** Unique webhook identifier */
-  id: string;
-  /** Organization ID this webhook belongs to */
-  orgId?: string;
-  /** URL to receive webhook payloads */
-  url: string;
-  /** Event types to subscribe to (e.g. ["conversation.created", "memory.ingested"]) */
-  events?: string[];
-  /** HMAC secret for payload signature verification */
-  secret?: string;
-  /** Whether this webhook is active */
-  active?: boolean;
-  /** ISO 8601 timestamp of webhook creation */
-  createdAt?: string;
-  /** ISO 8601 timestamp of last update */
-  updatedAt?: string;
-}
-
-/**
- * Request payload for creating a new webhook.
- */
-export interface WebhookCreateRequest {
-  /** URL to receive webhook payloads */
-  url: string;
-  /** Event types to subscribe to */
-  events?: string[];
-  /** HMAC secret for payload signature verification */
-  secret?: string;
-}
-
-/**
- * Request payload for updating an existing webhook.
- */
-export interface WebhookUpdateRequest {
-  /** URL to receive webhook payloads */
-  url?: string;
-  /** Event types to subscribe to */
-  events?: string[];
-  /** HMAC secret for payload signature verification */
-  secret?: string;
-  /** Whether this webhook is active */
-  active?: boolean;
+export interface MergeCandidate {
+  /** Primary customer record */
+  customer: Customer;
+  /** Candidate duplicate customer record */
+  candidate: Customer;
+  /** Similarity score (0.0 to 1.0) */
+  similarity?: number;
 }
