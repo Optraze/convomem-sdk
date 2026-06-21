@@ -45,6 +45,24 @@ export { ConvoMem } from "./convomem.ts";
 export { ConvoMemClient } from "./client.ts";
 
 /**
+ * Resource classes backing {@link ConvoMemClient}.
+ *
+ * These classes implement the CRUD and business-logic operations for each API
+ * domain. They are instantiated automatically as properties of
+ * `ConvoMemClient` — you generally access them via `client.customers.*`,
+ * `client.memories.*`, etc.
+ *
+ * - **Customers** — {@link CustomersResource}
+ * - **Memories** — {@link MemoriesResource}
+ * - **Conversations** — {@link ConversationsResource}
+ * - **Embed** — {@link EmbedResource}
+ */
+export { CustomersResource } from "./resources/customers.ts";
+export { ConversationsResource } from "./resources/conversations.ts";
+export { EmbedResource } from "./resources/embed.ts";
+export { MemoriesResource } from "./resources/memories.ts";
+
+/**
  * Type definitions for the ConvoMem API.
  *
  * - **Capture** — {@link CaptureRequest}, {@link CaptureResponse}
