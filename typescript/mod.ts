@@ -7,6 +7,8 @@
  * **Advanced entry point:** {@link ConvoMemClient} — resource-based API
  * (`client.customers.*`, `client.memories.*`, etc.) for fine-grained control.
  *
+ * Full API documentation: {@link https://convomem.com/docs}.
+ *
  * @example
  * ```ts
  * import { ConvoMem } from "convomem";
@@ -50,7 +52,6 @@ export { ConvoMemClient } from "./client.ts";
  * - **Conversations** — {@link Conversation}, {@link ConversationListResponse}, {@link ConversationEndRequest}, {@link ConversationEndResponse}, {@link ConversationEscalateRequest}, {@link ConversationEscalateResponse}
  * - **Customers** — {@link Customer}, {@link CustomerCreateRequest}, {@link CustomerIdentity}, {@link CustomerListResponse}, {@link CustomerLookupParams}, {@link CustomerLookupResponse}, {@link CustomerStats}, {@link CustomerUpdateRequest}
  * - **Embed** — {@link EmbedTokenRequest}, {@link EmbedTokenResponse}
- * - **Entities** — {@link Entity}, {@link EntityGraphResponse}, {@link EntityListResponse}, {@link EntitySearchParams}
  * - **Feedback** — {@link FeedbackLookupRequest}, {@link FeedbackLookupResponse}
  * - **Handoff** — {@link HandoffParams}, {@link HandoffResponse}, {@link JourneyEntry}, {@link KeyMemory}
  * - **Memories** — {@link Memory}, {@link MemoryAddRequest}, {@link MemoryContext}, {@link MemoryIngestRequest}, {@link MemoryListResponse}, {@link MemoryLookupParams}, {@link MemoryUpdateRequest}
@@ -81,11 +82,6 @@ export type {
   // Embed
   EmbedTokenRequest,
   EmbedTokenResponse,
-  // Entities
-  Entity,
-  EntityGraphResponse,
-  EntityListResponse,
-  EntitySearchParams,
   // Feedback
   FeedbackLookupRequest,
   FeedbackLookupResponse,

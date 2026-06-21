@@ -15,7 +15,6 @@ import { CustomersResource } from "./resources/customers.ts";
 import { MemoriesResource } from "./resources/memories.ts";
 import { ConversationsResource } from "./resources/conversations.ts";
 import { EmbedResource } from "./resources/embed.ts";
-import { EntitiesResource } from "./resources/entities.ts";
 
 const DEFAULT_BASE_URL = "https://api.convomem.com/api/v1";
 
@@ -23,7 +22,7 @@ const DEFAULT_BASE_URL = "https://api.convomem.com/api/v1";
  * The primary client for interacting with the ConvoMem API.
  *
  * Provides authenticated access to all ConvoMem resources including customers,
- * memories, conversations, capture, embed, and entities.
+ * memories, conversations, capture, and embed.
  *
  * @example
  * ```ts
@@ -68,9 +67,6 @@ export class ConvoMemClient {
   /** Resource for generating and managing embed tokens. */
   readonly embed: EmbedResource;
 
-  /** Resource for managing entities and entity graphs. */
-  readonly entities: EntitiesResource;
-
   /**
    * Creates a new ConvoMem client instance.
    *
@@ -92,7 +88,6 @@ export class ConvoMemClient {
     this.memories = new MemoriesResource(this);
     this.conversations = new ConversationsResource(this);
     this.embed = new EmbedResource(this);
-    this.entities = new EntitiesResource(this);
   }
 
   /**

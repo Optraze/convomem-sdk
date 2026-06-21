@@ -650,67 +650,6 @@ export interface EmbedTokenResponse {
   scope: string;
 }
 
-// ── Entities ────────────────────────────────────────────
-
-/**
- * An entity in the knowledge graph.
- *
- * Entities represent real-world objects (companies, products, people) that
- * are linked to customers and memories through relationships.
- */
-export interface Entity {
-  /** Unique entity identifier */
-  id: string;
-  /** Organization ID this entity belongs to */
-  orgId?: string;
-  /** Entity name */
-  name: string;
-  /** Entity type (e.g. "company", "product", "person") */
-  type: string;
-  /** Arbitrary properties as key-value pairs */
-  properties?: Record<string, unknown>;
-  /** ISO 8601 timestamp of entity creation */
-  createdAt?: string;
-  /** ISO 8601 timestamp of last update */
-  updatedAt?: string;
-}
-
-/**
- * Paginated list of entities.
- */
-export interface EntityListResponse {
-  /** Array of entity records */
-  entities: Entity[];
-  /** Current page number (1-indexed) */
-  page: number;
-  /** Maximum items per page */
-  limit: number;
-  /** Total number of matching entities */
-  total: number;
-}
-
-/**
- * Parameters for searching entities.
- */
-export interface EntitySearchParams {
-  /** Search query text */
-  query: string;
-  /** Filter by entity type */
-  type?: string;
-  /** Maximum number of results to return */
-  limit?: number;
-}
-
-/**
- * Response containing an entity relationship graph.
- */
-export interface EntityGraphResponse {
-  /** Graph nodes (entities) */
-  nodes: Array<{ id: string; name: string; type: string }>;
-  /** Graph edges (relationships between entities) */
-  edges: Array<{ source: string; target: string; relationship: string }>;
-}
-
 // ── Identity ────────────────────────────────────────────
 
 /**
