@@ -184,9 +184,9 @@ export class MemoriesResource {
    * ```ts
    * const result = await client.memories.list("cust_abc123", { page: 1, limit: 10 });
    *
-   * for (const memory of result.memories) {
-   *   console.log(`${memory.category}: ${memory.fact}`);
-   * }
+ * for (const memory of result.memories) {
+ *   console.log(`${memory.category}: ${memory.content}`);
+ * }
    * ```
    */
   async list(
@@ -319,8 +319,8 @@ export class MemoriesResource {
    * ```ts
    * const memory = await client.memories.get("cust_abc123", "mem_xyz789");
    *
-   * console.log(memory.fact);       // "Prefers email over phone"
-   * console.log(memory.importance); // 0.8
+ * console.log(memory.content);    // "Prefers email over phone"
+ * console.log(memory.importance); // 0.8
    * ```
    */
   async get(
