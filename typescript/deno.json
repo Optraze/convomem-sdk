@@ -22,7 +22,8 @@
       "client.ts",
       "types.ts",
       "errors.ts",
-      "resources/"
+      "resources/",
+      "../LICENSE"
     ],
     "exclude": [
       "tests/",
