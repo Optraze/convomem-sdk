@@ -1,6 +1,7 @@
 {
   "name": "@optraze/convomem-sdk",
   "version": "0.1.0",
+  "license": "MIT",
   "exports": {
     ".": "./mod.ts",
     "./types": "./types.ts"
@@ -22,8 +23,7 @@
       "client.ts",
       "types.ts",
       "errors.ts",
-      "resources/",
-      "../LICENSE"
+      "resources/"
     ],
     "exclude": [
       "tests/",
