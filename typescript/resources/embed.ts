@@ -32,6 +32,10 @@ import type { EmbedTokenRequest, EmbedTokenResponse, HandoffResponse } from "../
 export class EmbedResource {
   #client: ConvoMemClient;
 
+  /**
+   * @internal
+   * Instances are created automatically by {@link ConvoMemClient}.
+   */
   constructor(client: ConvoMemClient) {
     this.#client = client;
   }

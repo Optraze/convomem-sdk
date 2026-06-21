@@ -43,6 +43,10 @@ import type {
 export class CustomersResource {
   #client: ConvoMemClient;
 
+  /**
+   * @internal
+   * Instances are created automatically by {@link ConvoMemClient}.
+   */
   constructor(client: ConvoMemClient) {
     this.#client = client;
   }

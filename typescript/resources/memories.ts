@@ -46,6 +46,10 @@ import type {
 export class MemoriesResource {
   #client: ConvoMemClient;
 
+  /**
+   * @internal
+   * Instances are created automatically by {@link ConvoMemClient}.
+   */
   constructor(client: ConvoMemClient) {
     this.#client = client;
   }

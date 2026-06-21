@@ -63,6 +63,14 @@ const DEFAULT_MAX_RETRIES = 3;
 export class ConvoMem {
   readonly #http: ConvoMemClient;
 
+  /**
+   * Creates a new ConvoMem flat-API client.
+   *
+   * Internally delegates to {@link ConvoMemClient} with a default 10s timeout
+   * and 3 retries. Pass a custom fetch, timeout, or retry policy via `config`.
+   *
+   * @param config - Configuration options (at minimum requires `apiKey`).
+   */
   constructor(config: ConvoMemConfig) {
     this.#http = new ConvoMemClient({
       timeout: DEFAULT_TIMEOUT,
