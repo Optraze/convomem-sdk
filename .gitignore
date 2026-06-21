@@ -221,3 +221,4 @@ dist
 .dynamod
 
 rust/target
+.serena
