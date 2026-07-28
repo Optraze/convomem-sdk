@@ -266,21 +266,24 @@ class CustomerListResponse(BaseModel):
 
 
 class CustomerStats(BaseModel):
-    """Aggregate customer statistics for the organization."""
+    """Aggregate customer statistics for the agent the API key is bound to.
+
+    Scoped to that one agent, not the whole organization.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
     total_customers: int = Field(alias="totalCustomers")
-    """Total number of customers."""
+    """Number of customers who have talked to this agent."""
 
     total_memories: int = Field(alias="totalMemories")
-    """Total number of memories."""
+    """Total memories this agent has stored."""
 
     avg_memories: float = Field(alias="avgMemories")
     """Average memories per customer."""
 
     total_conversations: int = Field(alias="totalConversations")
-    """Total number of conversations."""
+    """Total conversations held by this agent."""
 
     active7d: int
     """Customers active in the last 7 days."""

@@ -302,7 +302,10 @@ impl ConvoMem {
         Ok(())
     }
 
-    /// Return aggregate customer statistics for the organization.
+    /// Return aggregate customer statistics for the agent this API key is bound to.
+    ///
+    /// Scoped to that one agent, not the whole organization — a key bound to a
+    /// different agent returns different numbers for the same organization.
     pub async fn get_stats(&self) -> Result<CustomerStats> {
         self.client.request(reqwest::Method::GET, "/customers/stats", &QueryParams::new(), None::<&()>).await
     }

@@ -30,7 +30,9 @@ impl CustomerIdentity {
     }
 }
 
-/// Aggregate customer statistics for the organization.
+/// Aggregate customer statistics for the agent the API key is bound to.
+///
+/// Scoped to that one agent, not the whole organization.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomerStats {

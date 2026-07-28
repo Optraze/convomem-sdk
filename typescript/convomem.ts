@@ -524,10 +524,13 @@ export class ConvoMem {
   }
 
   /**
-   * Return aggregate customer statistics for the organization.
+   * Return aggregate customer statistics for the agent this API key is bound to.
+   *
+   * These are not org-wide totals: a key bound to a different agent returns
+   * different numbers for the same organization.
    *
    * @param options - Optional ISO date range filter (`from`, `to`).
-   * @returns Org-wide stats: counts, averages, sentiment breakdown.
+   * @returns Per-agent stats: counts, averages, sentiment breakdown.
    *
    * @example
    * ```ts

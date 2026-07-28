@@ -137,7 +137,9 @@ export class CustomersResource {
   /**
    * List customers with pagination.
    *
-   * Returns a paginated list of all customers in the organization.
+   * Returns a paginated list of the customers who have talked to the agent this
+   * API key is bound to. A customer who only ever contacted a different agent
+   * will not appear here.
    *
    * @param opts - Optional pagination parameters.
    * @param opts.page - Page number (1-indexed). Defaults to 1.

@@ -903,7 +903,7 @@
       },
       "get": {
         "summary": "List customers",
-        "description": "Retrieve a paginated list of customers for the organization.",
+        "description": "Retrieve a paginated list of the customers who have talked to the agent this API key is bound to. Customers who only ever contacted a different agent are not included.",
         "tags": [
           "Customers"
         ],

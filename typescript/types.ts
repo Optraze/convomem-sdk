@@ -24,7 +24,11 @@
  * ```
  */
 export interface ConvoMemConfig {
-  /** Organization API key (sk-org-...). The organization is resolved from this key. */
+  /**
+   * Organization API key (sk-org-...). Both the organization *and* the agent are
+   * resolved from this key — a key belongs to exactly one agent, so every capture
+   * lands under that agent and every read returns only that agent's data.
+   */
   apiKey: string;
   /** Custom fetch implementation (for testing or Deno Deploy) */
   fetch?: typeof globalThis.fetch;
@@ -672,16 +676,18 @@ export interface CustomerIdentity {
 // ── Stats & merge candidates ─────────────────────────────
 
 /**
- * Aggregate customer statistics for the organization.
+ * Aggregate customer statistics for the agent the API key is bound to.
+ *
+ * Scoped to that one agent, not the whole organization.
  */
 export interface CustomerStats {
-  /** Total number of customers */
+  /** Number of customers who have talked to this agent */
   totalCustomers: number;
-  /** Total number of memories stored */
+  /** Total memories this agent has stored */
   totalMemories: number;
   /** Average memories per customer */
   avgMemories: number;
-  /** Total number of conversations */
+  /** Total conversations held by this agent */
   totalConversations: number;
   /** Customers active in the last 7 days */
   active7d: number;

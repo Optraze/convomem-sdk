@@ -389,7 +389,11 @@ class ConvoMem:
         )
 
     def get_stats(self, *, from_date: str | None = None, to_date: str | None = None) -> Any:
-        """Return aggregate customer statistics for the organization."""
+        """Return aggregate customer statistics for the agent this API key is bound to.
+
+        Scoped to that one agent, not the whole organization — a key bound to a
+        different agent returns different numbers for the same organization.
+        """
         from convomem._types import CustomerStats
 
         params: dict[str, str] = {}
@@ -925,7 +929,11 @@ class AsyncConvoMem:
         )
 
     async def get_stats(self, *, from_date: str | None = None, to_date: str | None = None) -> Any:
-        """Return aggregate customer statistics for the organization."""
+        """Return aggregate customer statistics for the agent this API key is bound to.
+
+        Scoped to that one agent, not the whole organization — a key bound to a
+        different agent returns different numbers for the same organization.
+        """
         from convomem._types import CustomerStats
 
         params: dict[str, str] = {}
