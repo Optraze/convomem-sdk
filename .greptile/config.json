@@ -1,0 +1,27 @@
+{
+  "rules": [
+    {
+      "id": "no-plaintext-api-key-logging",
+      "rule": "Never log, include in an error message, or write to a test fixture the real api_key/apiKey value in plaintext. Test fixtures should use an obviously-fake key.",
+      "severity": "high"
+    },
+    {
+      "id": "cross-language-parity",
+      "rule": "This SDK ships in Python, Rust, and TypeScript with a mirrored resource surface. A new or changed API method/endpoint added in one language's resources should generally be mirrored in the other two, unless there's a stated language-specific reason not to.",
+      "scope": ["python/src/convomem/resources/**", "rust/src/**", "typescript/resources/**"],
+      "severity": "medium"
+    },
+    {
+      "id": "python-uses-uv",
+      "rule": "This package uses uv for dependency management (uv.lock present). Don't suggest bare pip/poetry commands for installing or running.",
+      "scope": ["python/**"],
+      "severity": "low"
+    },
+    {
+      "id": "typescript-is-deno-native",
+      "rule": "The TypeScript SDK is Deno-native (deno.json, deno.lock) and published to JSR/npm. Don't suggest npm install/npm test — use deno task equivalents.",
+      "scope": ["typescript/**"],
+      "severity": "low"
+    }
+  ]
+}
