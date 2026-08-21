@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://api.convomem.com/api/v1"
+      "url": "http://localhost:8000/api/v1"
     }
   ],
   "components": {
@@ -150,9 +150,54 @@
                     ],
                     "default": "CHAT"
                   },
+                  "socialHandles": {
+                    "type": "array",
+                    "description": "Identity field — social handles, either as bare strings (\"@jane\") or as objects with an optional platform. Counts toward the \"at least one identity field\" requirement.\n",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "value": {
+                              "type": "string",
+                              "example": "@jane"
+                            },
+                            "platform": {
+                              "type": "string",
+                              "example": "twitter"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
                   "idempotencyKey": {
                     "type": "string",
                     "maxLength": 128
+                  },
+                  "endConversation": {
+                    "type": "boolean",
+                    "description": "Close the conversation as COMPLETED once these turns are persisted. Use this instead of a separate call to POST /customers/conversations/end when you already know the call is over: capture writes the transcript in a background job, so closing separately races analysis against the write and can summarise half a call. Mutually exclusive with `escalate`.\n"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "Optional outcome recorded when `endConversation` is true."
+                  },
+                  "escalate": {
+                    "type": "boolean",
+                    "description": "Close the conversation as ESCALATED once these turns are persisted. Mutually exclusive with `endConversation`.\n"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "Optional reason recorded when `escalate` is true."
                   }
                 }
               }
@@ -246,7 +291,7 @@
             }
           },
           "422": {
-            "description": "Validation error"
+            "description": "Validation error — no message/messages, no identity field, or both `endConversation` and `escalate` set on the same request.\n"
           }
         }
       }
@@ -313,7 +358,17 @@
             "schema": {
               "type": "string"
             },
-            "description": "Topic or customer message to find relevant memories for. When provided, memories are ranked by semantic relevance and a pre-formatted context string is returned.\n"
+            "description": "Topic or customer message to find relevant memories for. When provided, memories are ranked by semantic relevance.\nOmit it at the start of a conversation, before the customer has said why they are calling: the response then leads with any unresolved issue, notes whether this is a repeat customer, and ranks memories by confidence and remaining strength rather than recency. Both modes return `context` and `tokenCount`.\n"
+          },
+          {
+            "in": "query",
+            "name": "maxTokens",
+            "schema": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4000
+            },
+            "description": "Token ceiling for the returned `context` block, for this call only. Omit to use the agent's configured budget, falling back to the default of 800. Values outside the range are clamped. The response always reports the actual size in `tokenCount`.\n"
           },
           {
             "in": "query",
@@ -423,11 +478,81 @@
                     "context": {
                       "type": "string",
                       "nullable": true,
-                      "description": "Pre-formatted context string for LLM injection (only when topic is provided)"
+                      "description": "Pre-formatted context string for LLM injection. Ranked by semantic relevance when a topic is given, otherwise a call-opening brief led by any unresolved issue.\n"
                     },
                     "tokenCount": {
                       "type": "integer",
-                      "description": "Estimated token count of context string (only when topic is provided)"
+                      "description": "Estimated token count of the context string"
+                    },
+                    "openIssue": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "The unresolved issue the context block leads with. Present only on a lookup without a topic, and only when one is open.\n",
+                      "properties": {
+                        "isOpen": {
+                          "type": "boolean"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "ESCALATED",
+                            "ACTIVE",
+                            "OUTCOME_UNRESOLVED"
+                          ]
+                        },
+                        "summary": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "conversationId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "priority": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "snoozedUntil": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "resolvedAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "description": "The two most recent internal agent notes on this issue — its own conversation's notes when it has any, else the customer's latest. Present only while the issue is open.\n",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "body": {
+                                "type": "string"
+                              },
+                              "authorId": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "conversationId": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 },
@@ -903,7 +1028,7 @@
       },
       "get": {
         "summary": "List customers",
-        "description": "Retrieve a paginated list of the customers who have talked to the agent this API key is bound to. Customers who only ever contacted a different agent are not included.",
+        "description": "Retrieve a paginated list of customers for the organization.",
         "tags": [
           "Customers"
         ],
@@ -1351,6 +1476,42 @@
         }
       }
     },
+    "/customers/{id}/journey": {
+      "get": {
+        "summary": "Customer journey timeline",
+        "description": "Newest-first timeline merging entity lifecycle events (edges opened/closed), insights, and sentiment shifts. Pro+ (knowledge graph) feature.",
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Journey timeline (max 100 events)"
+          },
+          "403": {
+            "description": "Plan does not include the knowledge graph"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
     "/customers/{id}/handoff": {
       "get": {
         "summary": "Cross-channel agent handoff context (by customer ID)",
@@ -1579,6 +1740,16 @@
               "type": "string"
             },
             "description": "The topic or query to find relevant memories for"
+          },
+          {
+            "in": "query",
+            "name": "maxTokens",
+            "schema": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4000
+            },
+            "description": "Token ceiling for the returned `context` block, for this call only. Omit to use the agent's configured budget, falling back to the default of 800. Values outside the range are clamped. The response always reports the actual size in `tokenCount`.\n"
           }
         ],
         "responses": {
@@ -1681,6 +1852,16 @@
               "type": "string"
             },
             "description": "The topic or query to find relevant memories for"
+          },
+          {
+            "in": "query",
+            "name": "maxTokens",
+            "schema": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4000
+            },
+            "description": "Token ceiling for the returned `context` block, for this call only. Omit to use the agent's configured budget, falling back to the default of 800. Values outside the range are clamped. The response always reports the actual size in `tokenCount`.\n"
           },
           {
             "in": "query",
@@ -2508,6 +2689,258 @@
           },
           "401": {
             "description": "Invalid or expired embed token"
+          }
+        }
+      }
+    },
+    "/handoff/destinations": {
+      "get": {
+        "summary": "List handoff destinations for the current agent",
+        "tags": [
+          "Handoff Routing"
+        ],
+        "responses": {
+          "200": {
+            "description": "Destinations, default first"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a handoff destination",
+        "description": "The first destination created for an agent becomes the default automatically — resolution always needs somewhere to fall back to.\n",
+        "tags": [
+          "Handoff Routing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Senior Support"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "PHONE",
+                      "SIP"
+                    ]
+                  },
+                  "value": {
+                    "type": "string",
+                    "example": "+15551234567"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "When should handoffs go here? This is what the AI reads when choosing.",
+                    "example": "Repeat callers with unresolved billing issues, or anyone who has escalated before."
+                  },
+                  "transferMessage": {
+                    "type": "string",
+                    "description": "Optional line spoken to the caller before the transfer connects."
+                  },
+                  "isDefault": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/handoff/destinations/{id}": {
+      "patch": {
+        "summary": "Update a handoff destination",
+        "tags": [
+          "Handoff Routing"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a handoff destination",
+        "description": "Refuses to delete the default while other destinations exist — promote another destination to default first.\n",
+        "tags": [
+          "Handoff Routing"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/handoff/route": {
+      "post": {
+        "summary": "Resolve where a customer's handoff should go",
+        "description": "Answers the live transfer question: given this customer, which human destination should take them? The decision itself was made when their last conversation ended, so this is a single indexed read.\n\n**This endpoint always returns 200.** Voice platforms treat a resolver error as a failed transfer, which strands a caller — so an unknown customer, a missing decision, or an internal failure all degrade to the agent's default destination instead of an error status. Check `source` to see which tier answered.\n\nUse `?format=dograh` to get Dograh's `transfer_context` shape directly.\n",
+        "tags": [
+          "Handoff Routing"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "generic",
+                "dograh"
+              ]
+            },
+            "description": "Response shape. Defaults to generic."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "At least one identity field is required.",
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+15551234567"
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "description": "Alias for phone."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The resolved destination, or the default when nothing better applies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "destination": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "PHONE",
+                            "SIP"
+                          ]
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "transferMessage": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      }
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "memory",
+                        "default",
+                        "none",
+                        "invalid_request"
+                      ],
+                      "description": "Which tier produced this answer."
+                    },
+                    "reasoning": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Why this destination was chosen for this customer."
+                    },
+                    "customerId": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/handoff/route/preview": {
+      "get": {
+        "summary": "Preview where a customer would be routed (dashboard test panel)",
+        "tags": [
+          "Handoff Routing"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "customerId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resolution that a live transfer would receive"
           }
         }
       }

@@ -21,12 +21,18 @@ import type {
   CustomerListResponse,
   CustomerStats,
   CustomerUpdateRequest,
+  CustomerLookupResponse,
   EmbedTokenResponse,
+  HandoffDestination,
+  HandoffDestinationCreateRequest,
+  HandoffDestinationUpdateRequest,
   HandoffResponse,
+  HandoffRouteResponse,
   Memory,
   MemoryContext,
   MemoryListResponse,
   MergeCandidate,
+  SocialHandle,
 } from "./types.ts";
 import { ConvoMemClient } from "./client.ts";
 
@@ -92,9 +98,16 @@ export class ConvoMem {
    * Send turns **verbatim** — do not filter, summarize, or skip turns you
    * consider "unimportant". Let ConvoMem's pipeline decide what to extract.
    *
+   * To close a conversation, set `endConversation` (or `escalate`) on the final
+   * capture rather than calling {@link ConvoMem.endConversation} separately.
+   * Capture persists the transcript in a background job, so closing in a second
+   * call races analysis against that write — on a voice hang-up, where both
+   * calls land together, the summary can be built from half a transcript.
+   * Setting the flag here makes persist → close → analyse one ordered chain.
+   *
    * @param messages - New turns since the last capture, in chronological order.
    * @param identity - Any one identifier (customerId, email, phone, externalId).
-   * @param options - Optional channel and display name.
+   * @param options - Channel, display name, social handles, and close-out flags.
    * @returns Session context with conversationId, customerId, and new-record flags.
    *
    * @example
@@ -108,11 +121,35 @@ export class ConvoMem {
    *   { channel: "CHAT", userName: "Alice" },
    * );
    * ```
+   *
+   * @example Close the conversation on the last turn
+   * ```ts
+   * await client.capture(
+   *   [{ role: "assistant", content: "All sorted — anything else?" }],
+   *   { phone: "+14155550101" },
+   *   { channel: "VOICE", endConversation: true, outcome: "refund_issued" },
+   * );
+   * ```
    */
   async capture(
     messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
     identity: CustomerIdentity,
-    options?: { channel?: "VOICE" | "CHAT" | "SMS" | "EMAIL"; userName?: string },
+    options?: {
+      channel?: "VOICE" | "CHAT" | "SMS" | "EMAIL";
+      userName?: string;
+      /** Social handles as an additional identity signal. */
+      socialHandles?: Array<string | SocialHandle>;
+      /** Close the conversation as COMPLETED. Mutually exclusive with `escalate`. */
+      endConversation?: boolean;
+      /** Outcome recorded alongside `endConversation`. */
+      outcome?: string;
+      /** Close the conversation as ESCALATED. Mutually exclusive with `endConversation`. */
+      escalate?: boolean;
+      /** Reason recorded alongside `escalate`. */
+      reason?: string;
+      /** Deduplicate retries of the same capture. */
+      idempotencyKey?: string;
+    },
   ): Promise<CaptureResponse> {
     return await this.#http.request<CaptureResponse>("POST", "/capture", {
       body: {
@@ -135,9 +172,14 @@ export class ConvoMem {
    * the individual memory records. Call this **before** generating a reply
    * so the model has up-to-date customer context.
    *
+   * The returned `context` wraps the memory lines in a delimited block marked
+   * as unverified caller statements. Inject it verbatim — the framing is what
+   * stops a caller-authored "memory" from reading as an instruction to your
+   * model. See the security notes in the docs before stripping it.
+   *
    * @param topic - The user's current message or question. Drives semantic ranking.
    * @param identity - Any one identifier.
-   * @param options - `autoCreate` registers the customer on first contact; `userName` backfills their name.
+   * @param options - `autoCreate` registers the customer on first contact; `userName` backfills their name; `maxTokens` caps the context block.
    * @returns Pre-rendered context string, token count, and ranked memory records.
    *
    * @example
@@ -145,33 +187,96 @@ export class ConvoMem {
    * const { context, memories, tokenCount } = await client.lookup(
    *   "preferred shipping method",
    *   { email: "alice@example.com" },
-   *   { autoCreate: true },
+   *   { autoCreate: true, maxTokens: 400 },
    * );
    * ```
    */
   async lookup(
     topic: string,
     identity: CustomerIdentity,
-    options?: { autoCreate?: boolean; userName?: string },
+    options?: {
+      autoCreate?: boolean;
+      userName?: string;
+      /**
+       * Token ceiling for the `context` block on this call only (50–4000,
+       * clamped). Omit to use the agent's configured budget, then the default
+       * of 800. A voice agent usually wants a tighter brief than an email one.
+       */
+      maxTokens?: number;
+    },
   ): Promise<MemoryContext> {
     const params: Record<string, string> = { topic };
+    if (identity.email) params.email = identity.email;
+    if (identity.phone) params.phone = identity.phone;
+    if (identity.externalId) params.externalId = identity.externalId;
+    if (options?.autoCreate !== undefined) params.autoCreate = String(options.autoCreate);
+    if (options?.userName) params.userName = options.userName;
+    if (options?.maxTokens !== undefined) params.maxTokens = String(options.maxTokens);
+
+    if (identity.customerId) {
+      // The path route already identifies the customer, so only the tuning
+      // params travel with it — but they must still travel, or a caller
+      // passing customerId would silently lose their maxTokens.
+      const pathParams: Record<string, string> = { topic };
+      if (params.maxTokens) pathParams.maxTokens = params.maxTokens;
+      return await this.#http.request<MemoryContext>(
+        "GET",
+        `/customers/${identity.customerId}/memories/lookup`,
+        { params: pathParams },
+      );
+    }
+    return await this.#http.request<MemoryContext>(
+      "GET",
+      "/customers/memories/lookup",
+      { params },
+    );
+  }
+
+  /**
+   * Recall context at the *start* of a conversation, before the customer has
+   * said why they are calling.
+   *
+   * This is the cold open: the phone has rung and nobody knows yet what it is
+   * about. Rather than the most recent facts, you get a call-opening brief —
+   * any unresolved issue first (with its status and the latest internal agent
+   * notes), a line if this is a repeat customer, then memories ranked on what
+   * is knowable without a query: confidence and remaining strength.
+   *
+   * There is no embedding call and no vector search on this path, so it is
+   * safe to run while the caller is still hearing the ring tone.
+   *
+   * @param identity - Any one identifier.
+   * @param options - `autoCreate` registers the customer on first contact; `userName` backfills their name; `maxTokens` caps the context block.
+   * @returns The customer profile, the brief, and the structured open issue if there is one.
+   *
+   * @example
+   * ```ts
+   * const { customer, context, openIssue } = await client.coldOpen(
+   *   { phone: "+14155550101" },
+   *   { autoCreate: true },
+   * );
+   *
+   * if (openIssue) {
+   *   console.log(`Still open: ${openIssue.summary} (${openIssue.reason})`);
+   * }
+   * ```
+   */
+  async coldOpen(
+    identity: CustomerIdentity,
+    options?: { autoCreate?: boolean; userName?: string; maxTokens?: number },
+  ): Promise<CustomerLookupResponse> {
+    const params: Record<string, string> = {};
     if (identity.customerId) params.customerId = identity.customerId;
     if (identity.email) params.email = identity.email;
     if (identity.phone) params.phone = identity.phone;
     if (identity.externalId) params.externalId = identity.externalId;
     if (options?.autoCreate !== undefined) params.autoCreate = String(options.autoCreate);
     if (options?.userName) params.userName = options.userName;
+    if (options?.maxTokens !== undefined) params.maxTokens = String(options.maxTokens);
 
-    if (identity.customerId) {
-      return await this.#http.request<MemoryContext>(
-        "GET",
-        `/customers/${identity.customerId}/memories/lookup`,
-        { params: { topic } },
-      );
-    }
-    return await this.#http.request<MemoryContext>(
+    return await this.#http.request<CustomerLookupResponse>(
       "GET",
-      "/customers/memories/lookup",
+      "/customers/lookup",
       { params },
     );
   }
@@ -793,6 +898,152 @@ export class ConvoMem {
    * // Embed: https://app.convomem.com/embed/agent-panel?token=<token>
    * ```
    */
+  // ── F. Handoff routing ───────────────────────────────────
+
+  /**
+   * Resolve where a live transfer for this customer should go.
+   *
+   * Answers the question a voice platform asks mid-call: the customer wants a
+   * human, which one? The judgement itself was made offline when their last
+   * conversation ended (or, with real-time routing enabled on the agent, on the
+   * last mid-call capture), so this is a single indexed read with no LLM work
+   * on the call path.
+   *
+   * **This call never fails.** A voice platform treats a resolver error as a
+   * failed transfer, which strands a caller — so an unknown customer, a missing
+   * decision, or an internal failure all degrade to the agent's default
+   * destination instead of throwing. Read `source` to see which tier answered:
+   * `memory` is a real per-customer decision, `default` is the fallback.
+   *
+   * @param identity - Any one identifier.
+   * @param options - `format: "dograh"` returns Dograh's `transfer_context` shape instead of the generic one.
+   * @returns The destination to transfer to, plus which tier chose it and why.
+   *
+   * @example
+   * ```ts
+   * const { destination, source, reasoning } = await client.routeHandoff({
+   *   phone: "+14155550101",
+   * });
+   *
+   * if (destination) {
+   *   await telephony.transfer(destination.value, destination.transferMessage);
+   * }
+   * ```
+   */
+  async routeHandoff(
+    identity: CustomerIdentity,
+    options?: { format?: "generic" | "dograh" },
+  ): Promise<HandoffRouteResponse> {
+    return await this.#http.request<HandoffRouteResponse>("POST", "/handoff/route", {
+      params: options?.format ? { format: options.format } : undefined,
+      body: {
+        customerId: identity.customerId,
+        externalId: identity.externalId,
+        email: identity.email,
+        phone: identity.phone,
+      },
+    });
+  }
+
+  /**
+   * List the handoff destinations configured for this agent, default first.
+   *
+   * @returns Every destination, active and inactive.
+   *
+   * @example
+   * ```ts
+   * const destinations = await client.listHandoffDestinations();
+   * ```
+   */
+  async listHandoffDestinations(): Promise<HandoffDestination[]> {
+    return await this.#http.request<HandoffDestination[]>(
+      "GET",
+      "/handoff/destinations",
+    );
+  }
+
+  /**
+   * Create a handoff destination for this agent.
+   *
+   * The first destination you create becomes the default automatically —
+   * routing always needs somewhere to fall back to. Write `description` as a
+   * plain-English rule: it is the text the model reads when choosing between
+   * destinations, so "repeat callers with unresolved billing issues" routes
+   * far better than "Tier 2".
+   *
+   * @param destination - Name, transport, value, and the routing description.
+   * @returns The created destination.
+   *
+   * @example
+   * ```ts
+   * await client.createHandoffDestination({
+   *   name: "Senior Support",
+   *   type: "PHONE",
+   *   value: "+15551234567",
+   *   description: "Repeat callers with unresolved billing issues, or anyone who has escalated before.",
+   *   transferMessage: "Let me put you through to a senior specialist.",
+   * });
+   * ```
+   */
+  async createHandoffDestination(
+    destination: HandoffDestinationCreateRequest,
+  ): Promise<HandoffDestination> {
+    return await this.#http.request<HandoffDestination>(
+      "POST",
+      "/handoff/destinations",
+      { body: destination },
+    );
+  }
+
+  /**
+   * Update a handoff destination.
+   *
+   * Editing a destination redirects live phone calls, so this requires
+   * organization write access, not just an agent-scoped key.
+   *
+   * @param id - Destination identifier.
+   * @param changes - Fields to change.
+   * @returns The updated destination.
+   */
+  async updateHandoffDestination(
+    id: string,
+    changes: HandoffDestinationUpdateRequest,
+  ): Promise<HandoffDestination> {
+    return await this.#http.request<HandoffDestination>(
+      "PATCH",
+      `/handoff/destinations/${id}`,
+      { body: changes },
+    );
+  }
+
+  /**
+   * Delete a handoff destination.
+   *
+   * Refuses to delete the default while other destinations still exist —
+   * promote another destination to default first, or routing would have
+   * nothing to fall back to.
+   *
+   * @param id - Destination identifier.
+   */
+  async deleteHandoffDestination(id: string): Promise<void> {
+    await this.#http.request<void>("DELETE", `/handoff/destinations/${id}`);
+  }
+
+  /**
+   * Preview the resolution a live transfer would receive for a customer,
+   * without performing one.
+   *
+   * @param customerId - The customer to resolve.
+   * @returns The same shape {@link ConvoMem.routeHandoff} would return.
+   */
+  async previewHandoffRoute(customerId: string): Promise<HandoffRouteResponse> {
+    return await this.#http.request<HandoffRouteResponse>(
+      "GET",
+      "/handoff/route/preview",
+      { params: { customerId } },
+    );
+  }
+
   async createEmbedToken(
     identity: CustomerIdentity,
     options?: { ttlSeconds?: number },

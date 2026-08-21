@@ -101,4 +101,39 @@ pub struct OpenIssue {
     pub conversation_id: Option<String>,
     #[serde(default)]
     pub summary: Option<String>,
+    /// Issue priority, when one has been set.
+    #[serde(default)]
+    pub priority: Option<String>,
+    /// Set while the issue is snoozed.
+    #[serde(default)]
+    pub snoozed_until: Option<String>,
+    /// Set once the issue has been resolved.
+    #[serde(default)]
+    pub resolved_at: Option<String>,
+    /// Free-form tags on the issue.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// The two most recent internal agent notes on this issue.
+    ///
+    /// Returned by a topic-less lookup, so an agent picking up the phone sees
+    /// the issue's latest human-written status, not just that it is open.
+    #[serde(default)]
+    pub notes: Vec<OpenIssueNote>,
+}
+
+/// An internal agent note attached to an open issue.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenIssueNote {
+    /// The note text.
+    pub body: String,
+    /// Author user ID, if the note was written by a person.
+    #[serde(default)]
+    pub author_id: Option<String>,
+    /// Conversation the note was written against.
+    #[serde(default)]
+    pub conversation_id: Option<String>,
+    /// When the note was written.
+    #[serde(default)]
+    pub created_at: Option<String>,
 }

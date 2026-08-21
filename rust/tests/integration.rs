@@ -46,6 +46,7 @@ async fn test_capture_roundtrip() {
         external_id: None,
         channel: Some("CHAT".to_string()),
         idempotency_key: Some(format!("integ-{}", chrono_now())),
+        ..Default::default()
     };
 
     let resp = client.capture(&req).await.unwrap();

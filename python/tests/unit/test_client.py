@@ -18,16 +18,15 @@ def client() -> ConvoMemClient:
 
 
 class TestClientConstruction:
-    def test_creates_client_with_default_base_url(self, client: ConvoMemClient):
-        assert client._base_url == "https://api.convomem.com/api/v1"
+    # The base URL is not configurable: there is one hosted API, and letting
+    # callers point an org API key at an arbitrary host is a footgun, not a
+    # feature. These assert the URL the client actually talks to.
+    def test_targets_the_hosted_api(self, client: ConvoMemClient):
+        # httpx normalises a base URL to a trailing slash, so compare on that.
+        assert str(client._http.base_url) == "https://api.convomem.com/api/v1/"
 
-    def test_creates_client_with_custom_base_url(self):
-        client = ConvoMemClient(api_key="test-key", base_url="https://custom.api.com/v1")
-        assert client._base_url == "https://custom.api.com/v1"
-
-    def test_strips_trailing_slash(self):
-        client = ConvoMemClient(api_key="test-key", base_url="https://custom.api.com/v1/")
-        assert client._base_url == "https://custom.api.com/v1"
+    def test_sends_the_api_key_header(self, client: ConvoMemClient):
+        assert client._http.headers["X-API-Key"] == "test-key"
 
     def test_context_manager(self):
         with ConvoMemClient(api_key="test-key") as client:

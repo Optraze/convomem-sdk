@@ -65,8 +65,15 @@ pub struct CustomerLookupParams {
     pub email: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
+    /// Topic to scope memory retrieval. Omit at the start of a conversation to
+    /// get a cold-open brief instead — see [`CustomerLookupResponse::open_issue`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
+    /// Token ceiling for the returned context block, for this call only
+    /// (50-4000, clamped). Omit to use the agent's configured budget, falling
+    /// back to the default of 800.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_create: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,6 +88,7 @@ impl CustomerLookupParams {
         if let Some(v) = &self.email { params.push(format!("email={v}")); }
         if let Some(v) = &self.external_id { params.push(format!("externalId={v}")); }
         if let Some(v) = &self.topic { params.push(format!("topic={v}")); }
+        if let Some(v) = &self.max_tokens { params.push(format!("maxTokens={v}")); }
         if let Some(v) = &self.auto_create { params.push(format!("autoCreate={v}")); }
         if let Some(v) = &self.user_name { params.push(format!("userName={v}")); }
         if params.is_empty() { String::new() } else { format!("?{}", params.join("&")) }
@@ -100,6 +108,10 @@ pub struct CustomerLookupResponse {
     pub context: Option<String>,
     #[serde(default)]
     pub token_count: Option<u32>,
+    /// The unresolved issue the context block leads with. Present only on a
+    /// lookup made *without* a topic, and only when an issue is actually open.
+    #[serde(default)]
+    pub open_issue: Option<crate::types::OpenIssue>,
 }
 
 #[derive(Debug, Default, Serialize)]

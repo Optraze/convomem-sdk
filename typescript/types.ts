@@ -76,8 +76,41 @@ export interface CaptureRequest {
   userName?: string;
   /** Channel (default: CHAT) */
   channel?: "VOICE" | "CHAT" | "SMS" | "EMAIL";
+  /**
+   * Social handles, as bare strings (`"@jane"`) or with an explicit platform.
+   * Counts as an identity field in its own right.
+   */
+  socialHandles?: Array<string | SocialHandle>;
   /** Idempotency key */
   idempotencyKey?: string;
+  /**
+   * Close the conversation as COMPLETED once these turns are persisted.
+   *
+   * Prefer this over a separate `endConversation()` call when you already know
+   * the call is over. Capture writes the transcript in a background job, so
+   * closing separately races analysis against that write and can summarise
+   * half a call. Mutually exclusive with `escalate`.
+   */
+  endConversation?: boolean;
+  /** Outcome recorded when `endConversation` is true. */
+  outcome?: string;
+  /**
+   * Close the conversation as ESCALATED once these turns are persisted.
+   * Mutually exclusive with `endConversation`.
+   */
+  escalate?: boolean;
+  /** Reason recorded when `escalate` is true. */
+  reason?: string;
+}
+
+/**
+ * A social handle used as a customer identifier.
+ */
+export interface SocialHandle {
+  /** The handle itself, e.g. `"@jane"` */
+  value: string;
+  /** Originating platform, e.g. `"twitter"` */
+  platform?: string;
 }
 
 /**
@@ -124,8 +157,17 @@ export interface CustomerLookupParams {
   email?: string;
   /** External system identifier */
   externalId?: string;
-  /** Topic to scope memory retrieval */
+  /**
+   * Topic to scope memory retrieval. Omit at the start of a conversation to
+   * get a cold-open brief instead — see {@link CustomerLookupResponse.openIssue}.
+   */
   topic?: string;
+  /**
+   * Token ceiling for the returned `context` block, for this call only
+   * (50–4000, clamped). Omit to use the agent's configured budget, falling
+   * back to the default of 800.
+   */
+  maxTokens?: number;
   /** Auto-create customer if not found (default: "false") */
   autoCreate?: "true" | "false";
   /** Customer display name (used with autoCreate) */
@@ -148,6 +190,52 @@ export interface CustomerLookupResponse {
   context?: string;
   /** Token count of the rendered context */
   tokenCount?: number;
+  /**
+   * The unresolved issue the context block leads with. Present only on a
+   * lookup made *without* a topic, and only when an issue is actually open.
+   */
+  openIssue?: OpenIssue | null;
+}
+
+/**
+ * An internal agent note attached to an open issue.
+ */
+export interface OpenIssueNote {
+  /** The note text */
+  body: string;
+  /** Author user ID, if the note was written by a person */
+  authorId?: string | null;
+  /** Conversation the note was written against */
+  conversationId?: string | null;
+  /** When the note was written */
+  createdAt: string;
+}
+
+/**
+ * An unresolved issue detected across a customer's conversation history.
+ *
+ * Returned by a topic-less lookup — the cold open — so an agent picking up the
+ * phone knows what is still outstanding before the customer says a word.
+ */
+export interface OpenIssue {
+  /** Always true when this object is present */
+  isOpen: boolean;
+  /** Why the issue counts as open */
+  reason?: "ESCALATED" | "ACTIVE" | "OUTCOME_UNRESOLVED";
+  /** One-line summary of the issue */
+  summary?: string | null;
+  /** The conversation the issue belongs to */
+  conversationId?: string | null;
+  /** Issue priority, when one has been set */
+  priority?: string | null;
+  /** Set while the issue is snoozed */
+  snoozedUntil?: string | null;
+  /** Set once the issue has been resolved */
+  resolvedAt?: string | null;
+  /** Free-form tags on the issue */
+  tags?: string[];
+  /** The two most recent internal agent notes on this issue */
+  notes?: OpenIssueNote[];
 }
 
 /**
@@ -455,6 +543,12 @@ export interface MemoryIngestRequest {
 export interface MemoryLookupParams {
   /** Topic to search memories for */
   topic: string;
+  /**
+   * Token ceiling for the returned `context` block, for this call only
+   * (50–4000, clamped). Omit to use the agent's configured budget, falling
+   * back to the default of 800.
+   */
+  maxTokens?: number;
   /** Customer phone number */
   phone?: string;
   /** Customer email address */
@@ -652,6 +746,101 @@ export interface EmbedTokenResponse {
   expiresIn: number;
   /** Token scope (e.g. "customer") */
   scope: string;
+}
+
+// ── Handoff routing ─────────────────────────────────────
+
+/**
+ * A place a live call can be transferred to.
+ *
+ * Destinations are configured per agent. `description` is the field that does
+ * the work: it is what the model reads when deciding which destination suits a
+ * given customer, so write it as a plain-English rule rather than a label.
+ */
+export interface HandoffDestination {
+  /** Destination identifier */
+  id: string;
+  /** Human-readable name, e.g. "Senior Support" */
+  name: string;
+  /** Transport type */
+  type: "PHONE" | "SIP";
+  /** E.164 number for PHONE, or a sip:/sips: URI for SIP */
+  value: string;
+  /** When handoffs should go here — read by the model when routing */
+  description?: string | null;
+  /** Spoken to the caller just before the transfer connects */
+  transferMessage?: string | null;
+  /** Whether this is the agent's fallback destination */
+  isDefault: boolean;
+  /** Inactive destinations are never chosen */
+  isActive: boolean;
+  /** Channel the destination serves. Only VOICE is accepted today. */
+  channel?: "VOICE" | "CHAT" | "SMS" | "EMAIL";
+}
+
+/**
+ * Request payload for creating a handoff destination.
+ *
+ * The first destination created for an agent becomes its default
+ * automatically — resolution always needs somewhere to fall back to.
+ */
+export interface HandoffDestinationCreateRequest {
+  /** Human-readable name */
+  name: string;
+  /** Transport type */
+  type: "PHONE" | "SIP";
+  /** E.164 number for PHONE, or a sip:/sips: URI for SIP */
+  value: string;
+  /** When handoffs should go here — this is what the model reads */
+  description?: string;
+  /** Spoken to the caller just before the transfer connects */
+  transferMessage?: string;
+  /** Promote this destination to the agent's default */
+  isDefault?: boolean;
+  /** Defaults to true */
+  isActive?: boolean;
+}
+
+/**
+ * Request payload for updating a handoff destination. All fields optional.
+ */
+export type HandoffDestinationUpdateRequest = Partial<
+  HandoffDestinationCreateRequest
+>;
+
+/**
+ * Which tier answered a routing request.
+ *
+ * - `memory` — a decision made from this customer's history
+ * - `default` — the agent's fallback destination
+ * - `none` — no destination is configured at all
+ * - `invalid_request` — no usable identity was supplied
+ */
+export type HandoffRouteSource =
+  | "memory"
+  | "default"
+  | "none"
+  | "invalid_request";
+
+/**
+ * Resolution of where a customer's handoff should go.
+ *
+ * Note that a routing call never fails: an unknown customer, a missing
+ * decision, or an internal error all degrade to the agent's default
+ * destination rather than an error. Read `source` to see which tier answered.
+ */
+export interface HandoffRouteResponse {
+  /** The chosen destination, or null when none is configured */
+  destination: Pick<
+    HandoffDestination,
+    "id" | "name" | "type" | "value" | "transferMessage"
+  > | null;
+  /** Which tier produced this answer */
+  source: HandoffRouteSource;
+  /** Why this destination was chosen for this customer */
+  reasoning?: string | null;
+  /** The resolved customer, when one was found */
+  customerId?: string | null;
 }
 
 // ── Identity ────────────────────────────────────────────

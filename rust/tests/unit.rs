@@ -39,7 +39,8 @@ async fn test_capture() {
         user_name: None,
         external_id: None,
         channel: Some("CHAT".to_string()),
-        idempotency_key: None,
+        // Spread the rest so adding a request field is not a test break.
+        ..Default::default()
     };
 
     let resp = client.capture(&req).await.unwrap();

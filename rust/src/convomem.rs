@@ -114,32 +114,105 @@ impl ConvoMem {
         self.client.request(reqwest::Method::POST, "/capture", &QueryParams::new(), Some(&req)).await
     }
 
+    /// Capture with the full request payload.
+    ///
+    /// Use this when you need the fields [`Self::capture`] does not take
+    /// positionally: `social_handles`, and the close-out flags
+    /// `end_conversation` / `escalate`.
+    ///
+    /// To close a conversation, set the flag here rather than making a
+    /// separate [`Self::end_conversation`] call. Capture persists the
+    /// transcript in a background job, so closing in a second call races
+    /// analysis against that write — on a voice hang-up, where both calls land
+    /// together, the summary can be built from half a transcript. The flag
+    /// makes persist → close → analyse one ordered chain.
+    ///
+    /// ```no_run
+    /// # use convomem::{CaptureRequest, ConvoMem, Message};
+    /// # async fn f(client: &ConvoMem) -> convomem::Result<()> {
+    /// client.capture_with(&CaptureRequest {
+    ///     messages: Some(vec![Message { role: "assistant".into(), content: "All sorted.".into() }]),
+    ///     phone_number: Some("+14155550101".into()),
+    ///     channel: Some("VOICE".into()),
+    ///     end_conversation: Some(true),
+    ///     outcome: Some("refund_issued".into()),
+    ///     ..Default::default()
+    /// }).await?;
+    /// # Ok(()) }
+    /// ```
+    pub async fn capture_with(&self, req: &CaptureRequest) -> Result<CaptureResponse> {
+        self.client.request(reqwest::Method::POST, "/capture", &QueryParams::new(), Some(req)).await
+    }
+
     // ── B. Recall ────────────────────────────────────────────────────────────
 
     /// Recall semantically relevant memories and return a prompt-ready context string.
+    ///
+    /// The returned `context` wraps the memory lines in a delimited block
+    /// marked as unverified caller statements. Inject it verbatim — that
+    /// framing is what stops a caller-authored "memory" from reading as an
+    /// instruction to your model.
+    ///
+    /// `max_tokens` caps the context block for this call only (50-4000,
+    /// clamped). Pass `None` to use the agent's configured budget, then the
+    /// default of 800. A voice agent usually wants a tighter brief than an
+    /// email one.
     pub async fn lookup(
         &self,
         topic: &str,
         identity: &CustomerIdentity,
         auto_create: Option<bool>,
         user_name: Option<&str>,
+        max_tokens: Option<u32>,
     ) -> Result<MemoryContext> {
         let auto_str = auto_create.map(|v| if v { "true" } else { "false" });
 
         if let Some(id) = &identity.customer_id {
+            // The path route already identifies the customer, but the tuning
+            // params must still travel, or a caller passing customer_id would
+            // silently lose their max_tokens.
             let path = format!("/customers/{id}/memories/lookup");
             let query = QueryParams::new()
                 .push("topic", topic)
                 .push_opt("autoCreate", auto_str)
-                .push_opt("userName", user_name);
+                .push_opt("userName", user_name)
+                .push_opt_u32("maxTokens", max_tokens);
             self.client.request(reqwest::Method::GET, &path, &query, None::<&()>).await
         } else {
             let query = identity_query(identity)
                 .push("topic", topic)
                 .push_opt("autoCreate", auto_str)
-                .push_opt("userName", user_name);
+                .push_opt("userName", user_name)
+                .push_opt_u32("maxTokens", max_tokens);
             self.client.request(reqwest::Method::GET, "/customers/memories/lookup", &query, None::<&()>).await
         }
+    }
+
+    /// Recall context at the *start* of a conversation, before the customer has
+    /// said why they are calling.
+    ///
+    /// This is the cold open: the phone has rung and nobody knows yet what it
+    /// is about. Rather than the most recent facts, you get a call-opening
+    /// brief — any unresolved issue first (with its status and the latest
+    /// internal agent notes), a line if this is a repeat customer, then
+    /// memories ranked on what is knowable without a query: confidence and
+    /// remaining strength.
+    ///
+    /// There is no embedding call and no vector search on this path, so it is
+    /// safe to run while the caller is still hearing the ring tone.
+    pub async fn cold_open(
+        &self,
+        identity: &CustomerIdentity,
+        auto_create: Option<bool>,
+        user_name: Option<&str>,
+        max_tokens: Option<u32>,
+    ) -> Result<CustomerLookupResponse> {
+        let auto_str = auto_create.map(|v| if v { "true" } else { "false" });
+        let query = identity_query(identity)
+            .push_opt("autoCreate", auto_str)
+            .push_opt("userName", user_name)
+            .push_opt_u32("maxTokens", max_tokens);
+        self.client.request(reqwest::Method::GET, "/customers/lookup", &query, None::<&()>).await
     }
 
     /// List all stored memories for a customer with pagination.
@@ -423,6 +496,89 @@ impl ConvoMem {
                 .push_opt("narrative", narrative_str);
             self.client.request(reqwest::Method::GET, "/customers/handoff", &query, None::<&()>).await
         }
+    }
+
+    // ── G. Handoff routing ───────────────────────────────────────────────────
+
+    /// Resolve where a live transfer for this customer should go.
+    ///
+    /// Answers the question a voice platform asks mid-call: the customer wants
+    /// a human, which one? The judgement itself was made offline when their
+    /// last conversation ended (or, with real-time routing enabled on the
+    /// agent, on the last mid-call capture), so this is a single indexed read
+    /// with no LLM work on the call path.
+    ///
+    /// **This call never fails.** A voice platform treats a resolver error as a
+    /// failed transfer, which strands a caller — so an unknown customer, a
+    /// missing decision, or an internal failure all degrade to the agent's
+    /// default destination instead of erroring. Read `source` on the response
+    /// to see which tier answered: `memory` is a real per-customer decision,
+    /// `default` is the fallback.
+    ///
+    /// Pass `Some("dograh")` for `format` to get Dograh's `transfer_context`
+    /// shape instead of the generic one.
+    pub async fn route_handoff(
+        &self,
+        identity: &CustomerIdentity,
+        format: Option<&str>,
+    ) -> Result<HandoffRouteResponse> {
+        let req = HandoffRouteRequest {
+            customer_id: identity.customer_id.clone(),
+            external_id: identity.external_id.clone(),
+            email: identity.email.clone(),
+            phone: identity.phone.clone(),
+        };
+        let query = QueryParams::new().push_opt("format", format);
+        self.client.request(reqwest::Method::POST, "/handoff/route", &query, Some(&req)).await
+    }
+
+    /// List the handoff destinations configured for this agent, default first.
+    pub async fn list_handoff_destinations(&self) -> Result<Vec<HandoffDestination>> {
+        self.client.request(reqwest::Method::GET, "/handoff/destinations", &QueryParams::new(), None::<&()>).await
+    }
+
+    /// Create a handoff destination for this agent.
+    ///
+    /// The first destination you create becomes the default automatically —
+    /// routing always needs somewhere to fall back to. Write `description` as
+    /// a plain-English rule: it is the text the model reads when choosing
+    /// between destinations, so "repeat callers with unresolved billing
+    /// issues" routes far better than "Tier 2".
+    pub async fn create_handoff_destination(
+        &self,
+        req: &HandoffDestinationRequest,
+    ) -> Result<HandoffDestination> {
+        self.client.request(reqwest::Method::POST, "/handoff/destinations", &QueryParams::new(), Some(req)).await
+    }
+
+    /// Update a handoff destination.
+    ///
+    /// Editing a destination redirects live phone calls, so this requires
+    /// organization write access, not just an agent-scoped key.
+    pub async fn update_handoff_destination(
+        &self,
+        destination_id: &str,
+        req: &HandoffDestinationRequest,
+    ) -> Result<HandoffDestination> {
+        let path = format!("/handoff/destinations/{destination_id}");
+        self.client.request(reqwest::Method::PATCH, &path, &QueryParams::new(), Some(req)).await
+    }
+
+    /// Delete a handoff destination.
+    ///
+    /// Refuses to delete the default while other destinations still exist —
+    /// promote another destination to default first, or routing would have
+    /// nothing to fall back to.
+    pub async fn delete_handoff_destination(&self, destination_id: &str) -> Result<()> {
+        let path = format!("/handoff/destinations/{destination_id}");
+        self.client.request::<serde_json::Value>(reqwest::Method::DELETE, &path, &QueryParams::new(), None::<&()>).await?;
+        Ok(())
+    }
+
+    /// Preview the resolution a live transfer would receive, without transferring.
+    pub async fn preview_handoff_route(&self, customer_id: &str) -> Result<HandoffRouteResponse> {
+        let query = QueryParams::new().push("customerId", customer_id);
+        self.client.request(reqwest::Method::GET, "/handoff/route/preview", &query, None::<&()>).await
     }
 
     /// Mint a short-lived read-only embed token for the ConvoMem agent panel.

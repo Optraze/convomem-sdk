@@ -77,8 +77,44 @@ class CaptureRequest(BaseModel):
     channel: Literal["VOICE", "CHAT", "SMS", "EMAIL"] | None = Field(default=None, alias="channel")
     """Communication channel (default: CHAT)."""
 
+    social_handles: list[str | SocialHandle] | None = Field(default=None, alias="socialHandles")
+    """Social handles, as bare strings or with an explicit platform.
+
+    Counts as an identity field in its own right.
+    """
+
     idempotency_key: str | None = Field(default=None, alias="idempotencyKey")
     """Idempotency key."""
+
+    end_conversation: bool | None = Field(default=None, alias="endConversation")
+    """Close the conversation as COMPLETED once these turns are persisted.
+
+    Prefer this over a separate ``end_conversation()`` call when you already
+    know the call is over.  Capture writes the transcript in a background job,
+    so closing separately races analysis against that write and can summarise
+    half a call.  Mutually exclusive with ``escalate``.
+    """
+
+    outcome: str | None = Field(default=None, alias="outcome")
+    """Outcome recorded when ``end_conversation`` is set."""
+
+    escalate: bool | None = Field(default=None, alias="escalate")
+    """Close the conversation as ESCALATED.  Mutually exclusive with ``end_conversation``."""
+
+    reason: str | None = Field(default=None, alias="reason")
+    """Reason recorded when ``escalate`` is set."""
+
+
+class SocialHandle(BaseModel):
+    """A social handle used as a customer identifier."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    value: str
+    """The handle itself, e.g. ``"@jane"``."""
+
+    platform: str | None = Field(default=None, alias="platform")
+    """Originating platform, e.g. ``"twitter"``."""
 
 
 class CaptureResponse(BaseModel):
@@ -214,7 +250,18 @@ class CustomerLookupParams(BaseModel):
     """External system identifier."""
 
     topic: str | None = Field(default=None, alias="topic")
-    """Topic to scope memory retrieval."""
+    """Topic to scope memory retrieval.
+
+    Omit at the start of a conversation to get a cold-open brief instead —
+    see :attr:`CustomerLookupResponse.open_issue`.
+    """
+
+    max_tokens: int | None = Field(default=None, alias="maxTokens")
+    """Token ceiling for the returned context block, for this call only.
+
+    50-4000, clamped.  Omit to use the agent's configured budget, falling back
+    to the default of 800.
+    """
 
     auto_create: Literal["true", "false"] | None = Field(default=None, alias="autoCreate")
     """Auto-create customer if not found (default: "false")."""
@@ -245,6 +292,13 @@ class CustomerLookupResponse(BaseModel):
 
     token_count: int | None = Field(default=None, alias="tokenCount")
     """Token count of the rendered context."""
+
+    open_issue: OpenIssue | None = Field(default=None, alias="openIssue")
+    """The unresolved issue the context block leads with.
+
+    Present only on a lookup made *without* a topic, and only when an issue is
+    actually open.
+    """
 
 
 class CustomerListResponse(BaseModel):
@@ -443,6 +497,46 @@ class OpenIssue(BaseModel):
     summary: str | None = Field(default=None, alias="summary")
     """Human-readable summary of the open issue, or None if none."""
 
+    conversation_id: str | None = Field(default=None, alias="conversationId")
+    """The conversation the issue belongs to."""
+
+    priority: str | None = Field(default=None, alias="priority")
+    """Issue priority, when one has been set."""
+
+    snoozed_until: str | None = Field(default=None, alias="snoozedUntil")
+    """Set while the issue is snoozed."""
+
+    resolved_at: str | None = Field(default=None, alias="resolvedAt")
+    """Set once the issue has been resolved."""
+
+    tags: list[str] | None = Field(default=None, alias="tags")
+    """Free-form tags on the issue."""
+
+    notes: list[OpenIssueNote] | None = Field(default=None, alias="notes")
+    """The two most recent internal agent notes on this issue.
+
+    Returned by a topic-less lookup, so an agent picking up the phone sees the
+    issue's latest human-written status, not just that it is open.
+    """
+
+
+class OpenIssueNote(BaseModel):
+    """An internal agent note attached to an open issue."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    body: str
+    """The note text."""
+
+    author_id: str | None = Field(default=None, alias="authorId")
+    """Author user ID, if the note was written by a person."""
+
+    conversation_id: str | None = Field(default=None, alias="conversationId")
+    """Conversation the note was written against."""
+
+    created_at: str | None = Field(default=None, alias="createdAt")
+    """When the note was written."""
+
 
 class HandoffResponse(BaseModel):
     """Structured handoff briefing for transitioning a customer to a new agent.
@@ -581,6 +675,13 @@ class MemoryLookupParams(BaseModel):
 
     topic: str
     """Topic to search memories for."""
+
+    max_tokens: int | None = Field(default=None, alias="maxTokens")
+    """Token ceiling for the returned context block, for this call only.
+
+    50-4000, clamped.  Omit to use the agent's configured budget, falling back
+    to the default of 800.
+    """
 
     phone: str | None = Field(default=None, alias="phone")
     """Customer phone number."""
@@ -800,3 +901,73 @@ class EmbedTokenResponse(BaseModel):
 
 # (Admin-scope types removed: Entity, Org, Webhook, Insights.
 #  Integration API keys cannot call those endpoints.)
+
+
+# ── Handoff routing ─────────────────────────────────────
+
+
+class HandoffDestination(BaseModel):
+    """A place a live call can be transferred to.
+
+    Destinations are configured per agent.  ``description`` is the field that
+    does the work: it is what the model reads when deciding which destination
+    suits a given customer, so write it as a plain-English rule rather than a
+    label.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    """Destination identifier."""
+
+    name: str
+    """Human-readable name, e.g. "Senior Support"."""
+
+    type: Literal["PHONE", "SIP"]
+    """Transport type."""
+
+    value: str
+    """E.164 number for PHONE, or a sip:/sips: URI for SIP."""
+
+    description: str | None = Field(default=None, alias="description")
+    """When handoffs should go here — read by the model when routing."""
+
+    transfer_message: str | None = Field(default=None, alias="transferMessage")
+    """Spoken to the caller just before the transfer connects."""
+
+    is_default: bool | None = Field(default=None, alias="isDefault")
+    """Whether this is the agent's fallback destination."""
+
+    is_active: bool | None = Field(default=None, alias="isActive")
+    """Inactive destinations are never chosen."""
+
+    channel: Literal["VOICE", "CHAT", "SMS", "EMAIL"] | None = Field(default=None, alias="channel")
+    """Channel the destination serves.  Only VOICE is accepted today."""
+
+
+class HandoffRouteResponse(BaseModel):
+    """Resolution of where a customer's handoff should go.
+
+    A routing call never fails: an unknown customer, a missing decision, or an
+    internal error all degrade to the agent's default destination rather than
+    an error.  Read :attr:`source` to see which tier answered.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    destination: HandoffDestination | None = Field(default=None, alias="destination")
+    """The chosen destination, or None when none is configured."""
+
+    source: Literal["memory", "default", "none", "invalid_request"]
+    """Which tier produced this answer.
+
+    ``memory`` is a real per-customer decision; ``default`` is the fallback;
+    ``none`` means no destination is configured at all; ``invalid_request``
+    means no usable identity was supplied.
+    """
+
+    reasoning: str | None = Field(default=None, alias="reasoning")
+    """Why this destination was chosen for this customer."""
+
+    customer_id: str | None = Field(default=None, alias="customerId")
+    """The resolved customer, when one was found."""
