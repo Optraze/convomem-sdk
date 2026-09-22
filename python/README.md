@@ -24,7 +24,7 @@ ctx = client.lookup("billing question", alice)
 print(ctx.context)
 
 # Capture the exchange afterwards
-client.capture(
+capture = client.capture(
     [
         {"role": "user", "content": "What's my invoice total?"},
         {"role": "assistant", "content": "It's $49 this month."},
@@ -32,6 +32,9 @@ client.capture(
     alice,
     channel="CHAT",
 )
+
+# Capture is asynchronous; poll only when your workflow needs completion.
+status = client.get_capture_status(capture.capture_id)
 ```
 
 ### At the start of a call
@@ -89,6 +92,17 @@ async def main():
         print(ctx.context)
 
 asyncio.run(main())
+```
+
+## Self-hosted and local APIs
+
+All clients accept a `base_url` ending in `/api/v1`:
+
+```python
+client = ConvoMem(
+    api_key="sk-org-abc123",
+    base_url="http://localhost:8000/api/v1",
+)
 ```
 
 ## Injecting context safely

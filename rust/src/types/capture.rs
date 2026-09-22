@@ -19,6 +19,12 @@ pub struct CaptureRequest {
     pub user_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub occurred_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub infer: Option<bool>,
     /// Social handles, as bare strings or with an explicit platform.
     /// Counts as an identity field in its own right.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -43,6 +49,10 @@ pub struct CaptureRequest {
     /// Reason recorded when `escalate` is set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaker_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaker_name: Option<String>,
 }
 
 /// A social handle used as a customer identifier.
@@ -56,10 +66,12 @@ pub struct SocialHandle {
     pub platform: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Message {
     pub role: String,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,7 +79,24 @@ pub struct Message {
 pub struct CaptureResponse {
     pub conversation_id: String,
     pub customer_id: String,
+    pub capture_id: String,
+    pub capture_status: String,
     pub status: String,
     pub is_new_conversation: bool,
     pub is_new_customer: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureStatusResponse {
+    pub capture_id: String,
+    pub status: String,
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub attempts: u32,
+    #[serde(default)]
+    pub result: Option<serde_json::Value>,
+    #[serde(default)]
+    pub error: Option<String>,
 }

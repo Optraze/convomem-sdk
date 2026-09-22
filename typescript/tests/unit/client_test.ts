@@ -51,6 +51,8 @@ describe("ConvoMemClient Unit", () => {
       const mock = mockFetch({
         conversationId: "conv-123",
         customerId: "cust-456",
+        captureId: "cap-789",
+        captureStatus: "queued",
         status: "active",
         isNewConversation: false,
         isNewCustomer: false,
@@ -71,6 +73,30 @@ describe("ConvoMemClient Unit", () => {
       const body = JSON.parse(mock.calls[0].init?.body as string);
       assertEquals(body.message, "Hello");
       assertEquals(body.customerId, "cust-456");
+    });
+
+    it("uses a custom base URL and polls capture status", async () => {
+      const mock = mockFetch({
+        captureId: "cap-789",
+        status: "completed",
+        createdAt: "2026-09-22T00:00:00Z",
+        startedAt: null,
+        completedAt: "2026-09-22T00:00:01Z",
+        attempts: 1,
+      });
+      const c = new ConvoMemClient({
+        apiKey: "test-key",
+        baseUrl: "http://localhost:9000/api/v1/",
+        fetch: mock.fetch,
+      });
+
+      const result = await c.getCaptureStatus("cap-789");
+
+      assertEquals(result.status, "completed");
+      assertEquals(
+        mock.calls[0].url,
+        "http://localhost:9000/api/v1/capture/cap-789",
+      );
     });
   });
 
@@ -209,6 +235,9 @@ describe("ConvoMemClient Unit", () => {
       const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
       const result = await c.memories.lookup("cust-123", {
         topic: "delivery preferences",
+        maxTokens: 400,
+        explain: true,
+        includeAgentFacts: true,
       });
 
       assertEquals(result.memories.length, 1);
@@ -216,13 +245,18 @@ describe("ConvoMemClient Unit", () => {
         mock.calls[0].url.includes("topic=delivery+preferences"),
         true,
       );
+      assertEquals(mock.calls[0].url.includes("maxTokens=400"), true);
+      assertEquals(mock.calls[0].url.includes("explain=true"), true);
+      assertEquals(mock.calls[0].url.includes("includeAgentFacts=true"), true);
     });
 
     it("sends PATCH /customers/{id}/memories/{memId}", async () => {
       const mock = mockFetch(null, 200);
 
       const c = new ConvoMemClient({ apiKey: "test-key", fetch: mock.fetch });
-      await c.memories.update("cust-123", "mem-1", { content: "Updated content" });
+      await c.memories.update("cust-123", "mem-1", {
+        content: "Updated content",
+      });
 
       assertEquals(mock.calls[0].init?.method, "PATCH");
       assertEquals(mock.calls[0].url.includes("/memories/mem-1"), true);
@@ -433,7 +467,10 @@ describe("ConvoMemClient Unit", () => {
         () => c.customers.get("cust-123"),
         ConvoMemApiError,
       );
-      assertEquals(err.url, "https://api.convomem.com/api/v1/customers/cust-123");
+      assertEquals(
+        err.url,
+        "https://api.convomem.com/api/v1/customers/cust-123",
+      );
     });
   });
 

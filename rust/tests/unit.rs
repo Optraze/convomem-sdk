@@ -23,7 +23,9 @@ async fn test_capture() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "conversationId": "conv_123",
             "customerId": "cust_456",
-            "status": "queued",
+            "captureId": "cap_789",
+            "captureStatus": "queued",
+            "status": "active",
             "isNewCustomer": false,
             "isNewConversation": false,
         })))
@@ -46,6 +48,28 @@ async fn test_capture() {
     let resp = client.capture(&req).await.unwrap();
     assert_eq!(resp.conversation_id, "conv_123");
     assert_eq!(resp.customer_id, "cust_456");
+}
+
+#[tokio::test]
+async fn test_capture_status() {
+    let server = MockServer::start().await;
+    let client = client(&server.uri());
+
+    Mock::given(method("GET"))
+        .and(path("/capture/cap_789"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "captureId": "cap_789",
+            "status": "completed",
+            "createdAt": "2026-09-22T00:00:00Z",
+            "startedAt": null,
+            "completedAt": "2026-09-22T00:00:01Z",
+            "attempts": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client.get_capture_status("cap_789").await.unwrap();
+    assert_eq!(resp.status, "completed");
 }
 
 // ── Customers ────────────────────────────────────────────
@@ -213,8 +237,13 @@ async fn test_ingest_memories() {
         messages: vec![Message {
             role: "user".to_string(),
             content: "I prefer email".to_string(),
+            ..Default::default()
         }],
         channel: Some("CHAT".to_string()),
+        language: None,
+        infer: None,
+        speaker_id: None,
+        speaker_name: None,
     };
 
     let resp = client.ingest_memories("cust_123", &req).await.unwrap();
@@ -229,6 +258,8 @@ async fn test_lookup_memories() {
     Mock::given(method("GET"))
         .and(path("/customers/cust_123/memories/lookup"))
         .and(query_param("topic", "billing"))
+        .and(query_param("maxTokens", "400"))
+        .and(query_param("explain", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "context": "Customer has 3 billing issues",
             "tokenCount": 50,
@@ -237,7 +268,18 @@ async fn test_lookup_memories() {
         .mount(&server)
         .await;
 
-    let resp = client.lookup_memories("cust_123", "billing").await.unwrap();
+    let resp = client
+        .lookup_memories(
+            "cust_123",
+            &MemoryLookupParams {
+                topic: "billing".to_string(),
+                max_tokens: Some(400),
+                explain: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.token_count, 50);
     assert_eq!(resp.memories.len(), 1);
 }
@@ -258,10 +300,11 @@ async fn test_add_memory() {
         .await;
 
     let req = MemoryAddRequest {
-        fact: "Prefers dark mode".to_string(),
+        content: "Prefers dark mode".to_string(),
         category: Some("preference".to_string()),
         importance: Some(0.8),
         memory_type: None,
+        expires_at: None,
     };
 
     let resp = client.add_memory("cust_123", &req).await.unwrap();
@@ -286,30 +329,6 @@ async fn test_list_memories() {
 
     let resp = client.list_memories("cust_123", Some(1), Some(10)).await.unwrap();
     assert_eq!(resp.memories.len(), 1);
-}
-
-#[tokio::test]
-async fn test_lookup_feedback() {
-    let server = MockServer::start().await;
-    let client = client(&server.uri());
-
-    Mock::given(method("POST"))
-        .and(path("/memories/lookup-feedback"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "found": true,
-            "feedback": {"rating": 5},
-            "memories": [{"id": "mem_1", "fact": "Happy customer"}],
-        })))
-        .mount(&server)
-        .await;
-
-    let req = FeedbackLookupRequest {
-        email: Some("test@example.com".to_string()),
-        ..Default::default()
-    };
-
-    let resp = client.lookup_feedback(&req).await.unwrap();
-    assert!(resp.found);
 }
 
 // ── Conversations ────────────────────────────────────────

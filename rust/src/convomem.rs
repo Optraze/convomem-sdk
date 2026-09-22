@@ -61,8 +61,8 @@ fn merge_into(mut base: serde_json::Value, extra: Vec<(&'static str, serde_json:
 ///     // Capture conversation turns for future recall
 ///     client.capture(
 ///         vec![
-///             Message { role: "user".into(), content: "What's my invoice?".into() },
-///             Message { role: "assistant".into(), content: "Let me look that up…".into() },
+///             Message { role: "user".into(), content: "What's my invoice?".into(), ..Default::default() },
+///             Message { role: "assistant".into(), content: "Let me look that up…".into(), ..Default::default() },
 ///         ],
 ///         &CustomerIdentity::from_email("alice@example.com"),
 ///         Some("CHAT"),
@@ -131,7 +131,7 @@ impl ConvoMem {
     /// # use convomem::{CaptureRequest, ConvoMem, Message};
     /// # async fn f(client: &ConvoMem) -> convomem::Result<()> {
     /// client.capture_with(&CaptureRequest {
-    ///     messages: Some(vec![Message { role: "assistant".into(), content: "All sorted.".into() }]),
+    ///     messages: Some(vec![Message { role: "assistant".into(), content: "All sorted.".into(), ..Default::default() }]),
     ///     phone_number: Some("+14155550101".into()),
     ///     channel: Some("VOICE".into()),
     ///     end_conversation: Some(true),
@@ -142,6 +142,11 @@ impl ConvoMem {
     /// ```
     pub async fn capture_with(&self, req: &CaptureRequest) -> Result<CaptureResponse> {
         self.client.request(reqwest::Method::POST, "/capture", &QueryParams::new(), Some(req)).await
+    }
+
+    /// Get queued, processing, completed, or failed state for a capture.
+    pub async fn get_capture_status(&self, capture_id: &str) -> Result<CaptureStatusResponse> {
+        self.client.get_capture_status(capture_id).await
     }
 
     // ── B. Recall ────────────────────────────────────────────────────────────
@@ -185,6 +190,23 @@ impl ConvoMem {
                 .push_opt("userName", user_name)
                 .push_opt_u32("maxTokens", max_tokens);
             self.client.request(reqwest::Method::GET, "/customers/memories/lookup", &query, None::<&()>).await
+        }
+    }
+
+    /// Recall memories with the complete set of public retrieval controls.
+    pub async fn lookup_with(
+        &self,
+        params: &MemoryLookupParams,
+        identity: &CustomerIdentity,
+    ) -> Result<MemoryContext> {
+        if let Some(id) = &identity.customer_id {
+            self.client.lookup_memories(id, params).await
+        } else {
+            let mut params = params.clone();
+            params.phone = identity.phone.clone().or(params.phone);
+            params.email = identity.email.clone().or(params.email);
+            params.external_id = identity.external_id.clone().or(params.external_id);
+            self.client.lookup_memories_by_identity(&params).await
         }
     }
 
@@ -361,26 +383,6 @@ impl ConvoMem {
             self.client.request::<serde_json::Value>(reqwest::Method::DELETE, "/customers", &query, None::<&()>).await?;
         }
         Ok(())
-    }
-
-    /// Return profiles flagged as potential duplicates.
-    pub async fn list_merge_candidates(&self) -> Result<Vec<MergeCandidate>> {
-        self.client.request(reqwest::Method::GET, "/customers/merge-candidates", &QueryParams::new(), None::<&()>).await
-    }
-
-    /// Dismiss a duplicate candidate as a false positive.
-    pub async fn dismiss_merge_candidate(&self, customer_id: &str, candidate_id: &str) -> Result<()> {
-        let path = format!("/customers/{customer_id}/merge-candidates/{candidate_id}/dismiss");
-        self.client.request::<serde_json::Value>(reqwest::Method::POST, &path, &QueryParams::new(), Some(&serde_json::json!({}))).await?;
-        Ok(())
-    }
-
-    /// Return aggregate customer statistics for the agent this API key is bound to.
-    ///
-    /// Scoped to that one agent, not the whole organization — a key bound to a
-    /// different agent returns different numbers for the same organization.
-    pub async fn get_stats(&self) -> Result<CustomerStats> {
-        self.client.request(reqwest::Method::GET, "/customers/stats", &QueryParams::new(), None::<&()>).await
     }
 
     // ── E. Conversations ─────────────────────────────────────────────────────
@@ -614,6 +616,11 @@ impl ConvoMemBuilder {
 
     pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
         self.inner = self.inner.timeout(timeout);
+        self
+    }
+
+    pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.inner = self.inner.base_url(base_url);
         self
     }
 

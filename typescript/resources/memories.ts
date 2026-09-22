@@ -3,15 +3,13 @@
  *
  * Manages customer memories — the core unit of the ConvoMem platform. Memories
  * are facts, preferences, and insights extracted from conversations. This
- * resource provides ingestion, lookup, CRUD operations, and feedback retrieval.
+ * resource provides ingestion, lookup, and CRUD operations.
  *
  * @module
  */
 
 import type { ConvoMemClient } from "../client.ts";
 import type {
-  FeedbackLookupRequest,
-  FeedbackLookupResponse,
   Memory,
   MemoryAddRequest,
   MemoryContext,
@@ -20,6 +18,30 @@ import type {
   MemoryLookupParams,
   MemoryUpdateRequest,
 } from "../types.ts";
+
+function lookupQuery(params: MemoryLookupParams): Record<string, string> {
+  const query: Record<string, string> = { topic: params.topic };
+  for (
+    const key of [
+      "phone",
+      "email",
+      "externalId",
+      "maxTokens",
+      "limit",
+      "threshold",
+      "rerank",
+      "latestOnly",
+      "explain",
+      "referenceDate",
+      "includeAgentFacts",
+      "verify",
+    ] as const
+  ) {
+    const value = params[key];
+    if (value !== undefined) query[key] = String(value);
+  }
+  return query;
+}
 
 /**
  * Resource class for managing customer memories.
@@ -125,7 +147,7 @@ export class MemoriesResource {
     return await this.#client.request<MemoryContext>(
       "GET",
       `/customers/${customerId}/memories/lookup`,
-      { params: { topic: params.topic }, signal: opts?.signal },
+      { params: lookupQuery(params), signal: opts?.signal },
     );
   }
 
@@ -159,10 +181,7 @@ export class MemoriesResource {
     },
     opts?: { signal?: AbortSignal },
   ): Promise<MemoryContext> {
-    const query: Record<string, string> = { topic: params.topic };
-    if (params.phone) query.phone = params.phone;
-    if (params.email) query.email = params.email;
-    if (params.externalId) query.externalId = params.externalId;
+    const query = lookupQuery(params);
 
     return await this.#client.request<MemoryContext>(
       "GET",
@@ -188,18 +207,28 @@ export class MemoriesResource {
    * ```ts
    * const result = await client.memories.list("cust_abc123", { page: 1, limit: 10 });
    *
- * for (const memory of result.memories) {
- *   console.log(`${memory.category}: ${memory.content}`);
- * }
+   * for (const memory of result.memories) {
+   *   console.log(`${memory.category}: ${memory.content}`);
+   * }
    * ```
    */
   async list(
     customerId: string,
-    opts?: { page?: number; limit?: number; signal?: AbortSignal },
+    opts?: {
+      page?: number;
+      limit?: number;
+      includeExpired?: boolean;
+      asOf?: string;
+      signal?: AbortSignal;
+    },
   ): Promise<MemoryListResponse> {
     const params: Record<string, string> = {};
     if (opts?.page) params.page = String(opts.page);
     if (opts?.limit) params.limit = String(opts.limit);
+    if (opts?.includeExpired !== undefined) {
+      params.includeExpired = String(opts.includeExpired);
+    }
+    if (opts?.asOf) params.asOf = opts.asOf;
 
     const res = await this.#client.request<
       { memories: Memory[]; page: number; limit: number; total: number }
@@ -323,8 +352,8 @@ export class MemoriesResource {
    * ```ts
    * const memory = await client.memories.get("cust_abc123", "mem_xyz789");
    *
- * console.log(memory.content);    // "Prefers email over phone"
- * console.log(memory.importance); // 0.8
+   * console.log(memory.content);    // "Prefers email over phone"
+   * console.log(memory.importance); // 0.8
    * ```
    */
   async get(
@@ -336,42 +365,6 @@ export class MemoriesResource {
       "GET",
       `/customers/${customerId}/memories/${memId}`,
       { signal: opts?.signal },
-    );
-  }
-
-  /**
-   * Look up feedback-associated memories.
-   *
-   * Retrieves memories that are linked to customer feedback, resolved from
-   * any of the provided identity fields. Useful for understanding how
-   * feedback relates to stored customer knowledge.
-   *
-   * @param params - Feedback lookup parameters including customer identity and optional topic filter.
-   * @param opts - Optional settings.
-   * @param opts.signal - An {@link AbortSignal} to cancel the request.
-   * @returns A {@link FeedbackLookupResponse} with feedback data and associated memories.
-   *
-   * @example
-   * ```ts
-   * const result = await client.memories.lookupFeedback({
-   *   email: "alice@example.com",
-   *   topic: "service_quality",
-   * });
-   *
-   * if (result.found) {
-   *   console.log(result.feedback);  // Feedback key-value pairs
-   *   console.log(result.memories);  // Related memories
-   * }
-   * ```
-   */
-  async lookupFeedback(
-    params: FeedbackLookupRequest,
-    opts?: { signal?: AbortSignal },
-  ): Promise<FeedbackLookupResponse> {
-    return await this.#client.request<FeedbackLookupResponse>(
-      "POST",
-      "/memories/lookup-feedback",
-      { body: params, signal: opts?.signal },
     );
   }
 }

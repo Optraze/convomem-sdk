@@ -19,6 +19,72 @@
         "description": "Organization API key from your dashboard. Prefix: sk-org-..."
       }
     },
+    "parameters": {
+      "RetrievalLimit": {
+        "in": "query",
+        "name": "limit",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "description": "Maximum memories returned; values above the server cap are clamped."
+      },
+      "RetrievalThreshold": {
+        "in": "query",
+        "name": "threshold",
+        "schema": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "description": "Fixed minimum retrieval score. Omit to use adaptive thresholding."
+      },
+      "RetrievalRerank": {
+        "in": "query",
+        "name": "rerank",
+        "schema": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": "Opt into cross-encoder reranking for a smaller, higher-precision result set."
+      },
+      "RetrievalLatestOnly": {
+        "in": "query",
+        "name": "latestOnly",
+        "schema": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": "Collapse superseded lifecycle versions to the latest applicable memory."
+      },
+      "RetrievalReferenceDate": {
+        "in": "query",
+        "name": "referenceDate",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "Deterministic ISO 8601 evaluation time for temporal ranking and expiry."
+      },
+      "RetrievalIncludeAgentFacts": {
+        "in": "query",
+        "name": "includeAgentFacts",
+        "schema": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": "Include agent-authored commitments and disclosures; excluded by default."
+      },
+      "RetrievalVerify": {
+        "in": "query",
+        "name": "verify",
+        "schema": {
+          "type": "boolean"
+        },
+        "description": "Override answerability verification for this lookup; may add a paid model call."
+      }
+    },
     "schemas": {
       "MemoryContext": {
         "type": "object",
@@ -53,6 +119,10 @@
                   "type": "number",
                   "format": "float"
                 },
+                "score": {
+                  "type": "number",
+                  "format": "float"
+                },
                 "sentiment": {
                   "type": "string",
                   "nullable": true
@@ -60,9 +130,59 @@
                 "sourceContext": {
                   "type": "string",
                   "nullable": true
+                },
+                "occurredAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "eventDate": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "eventDatePrecision": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "eventDateSource": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "language": {
+                  "type": "string"
+                },
+                "languageSource": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "expiryIsFixed": {
+                  "type": "boolean"
+                },
+                "isExpired": {
+                  "type": "boolean"
+                },
+                "speaker": {
+                  "type": "string",
+                  "enum": [
+                    "customer",
+                    "agent"
+                  ]
+                },
+                "scoreDetails": {
+                  "type": "object",
+                  "nullable": true
                 }
               }
             }
+          },
+          "retrievalConfig": {
+            "type": "object",
+            "description": "Effective retrieval controls after server defaults and clamping."
           }
         }
       }
@@ -109,11 +229,16 @@
                           "enum": [
                             "user",
                             "assistant",
+                            "agent",
                             "system"
                           ]
                         },
                         "content": {
                           "type": "string"
+                        },
+                        "language": {
+                          "type": "string",
+                          "description": "Optional BCP-47 source-language hint for this turn"
                         }
                       }
                     }
@@ -149,6 +274,20 @@
                       "EMAIL"
                     ],
                     "default": "CHAT"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP-47 fallback for turns without their own language hint"
+                  },
+                  "occurredAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional timestamp for a historical conversation. Omit for live captures. Extracted memories retain this source time for temporal retrieval and supersession.\n"
+                  },
+                  "infer": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Set false to persist each non-system message directly as a memory without LLM extraction or entity inference. Content is still sanitized, sensitivity-filtered, embedded, deduplicated, reconciled, and speaker-scoped.\n"
                   },
                   "socialHandles": {
                     "type": "array",
@@ -198,6 +337,16 @@
                     "type": "string",
                     "maxLength": 500,
                     "description": "Optional reason recorded when `escalate` is true."
+                  },
+                  "speakerId": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "description": "Your own identifier for the human rep handling this conversation — whatever you already use (a staff id, an email, a helpdesk agent id). Conversations and the commitments made in them are attributed to it.\n\nIgnored unless this agent has **Attribute work to named agents** enabled in Agent Settings. Until then nothing is stored against it, because this is performance data about identifiable people.\n"
+                  },
+                  "speakerName": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "description": "Optional display name for that rep. Only overwrites a stored name when supplied, so a later call that omits it does not blank a name already recorded.\n"
                   }
                 }
               }
@@ -220,6 +369,16 @@
                       "type": "string",
                       "format": "uuid"
                     },
+                    "captureId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "captureStatus": {
+                      "type": "string",
+                      "enum": [
+                        "queued"
+                      ]
+                    },
                     "status": {
                       "type": "string",
                       "enum": [
@@ -238,6 +397,8 @@
                 "example": {
                   "conversationId": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
                   "customerId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  "captureId": "c1d2e3f4-a5b6-4890-8def-1234567890ab",
+                  "captureStatus": "queued",
                   "status": "active",
                   "isNewConversation": false,
                   "isNewCustomer": false
@@ -262,6 +423,17 @@
                       "format": "uuid",
                       "description": "The resolved or newly created customer ID"
                     },
+                    "captureId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Pollable asynchronous extraction job ID"
+                    },
+                    "captureStatus": {
+                      "type": "string",
+                      "enum": [
+                        "queued"
+                      ]
+                    },
                     "status": {
                       "type": "string",
                       "enum": [
@@ -283,6 +455,8 @@
                 "example": {
                   "conversationId": "d4e5f6a7-b8c9-0123-def0-456789abcdef",
                   "customerId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  "captureId": "c1d2e3f4-a5b6-4890-8def-1234567890ab",
+                  "captureStatus": "queued",
                   "status": "new",
                   "isNewConversation": true,
                   "isNewCustomer": false
@@ -292,6 +466,98 @@
           },
           "422": {
             "description": "Validation error — no message/messages, no identity field, or both `endConversation` and `escalate` set on the same request.\n"
+          },
+          "503": {
+            "description": "Capture queue unavailable; retry with the same idempotency key"
+          }
+        }
+      }
+    },
+    "/capture/{captureId}": {
+      "get": {
+        "summary": "Get asynchronous capture status",
+        "description": "Returns queued, processing, completed, or terminally failed state. Completed jobs include their extraction result.",
+        "tags": [
+          "Capture"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "captureId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Capture status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "captureId",
+                    "status",
+                    "createdAt",
+                    "startedAt",
+                    "completedAt",
+                    "attempts"
+                  ],
+                  "properties": {
+                    "captureId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "processing",
+                        "completed",
+                        "failed"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "startedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "completedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "attempts": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "result": {
+                      "type": "object",
+                      "description": "Present only for completed captures"
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Stable public error present only for terminal failures"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Capture not found in this organization and agent scope"
           }
         }
       }
@@ -369,6 +635,39 @@
               "maximum": 4000
             },
             "description": "Token ceiling for the returned `context` block, for this call only. Omit to use the agent's configured budget, falling back to the default of 800. Values outside the range are clamped. The response always reports the actual size in `tokenCount`.\n"
+          },
+          {
+            "in": "query",
+            "name": "explain",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "When `true`, each returned memory carries a `scoreDetails` object reporting every term the ranking composite used: `semantic`, `keyword`, `entity`, `temporal`, `importance`, `liveStrength`, `composite`, the `weights` applied, the `threshold` cleared, the retrieval `path` (\"full\" | \"fast\" | \"fast-empty\") and the `source` (\"vector\" | \"keyword\" | \"both\").\n\nA term reports `null` when it was NOT computed on the path that served this request — never `0`. The fast path computes no semantic score, and rows admitted by keyword augmentation are not scored at all, so `null` and `0` are different claims. Diagnostic only: the ranking and the returned set are identical with or without it.\n"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalLimit"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalThreshold"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalRerank"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalLatestOnly"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalReferenceDate"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalIncludeAgentFacts"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalVerify"
           },
           {
             "in": "query",
@@ -471,6 +770,12 @@
                             "type": "string",
                             "nullable": true,
                             "description": "Original conversation snippet the memory was extracted from"
+                          },
+                          "occurredAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true,
+                            "description": "Source conversation occurrence time; rendered into context metadata but not embedded in memory content"
                           }
                         }
                       }
@@ -1476,35 +1781,285 @@
         }
       }
     },
-    "/customers/{id}/journey": {
+    "/customers/memories": {
       "get": {
-        "summary": "Customer journey timeline",
-        "description": "Newest-first timeline merging entity lifecycle events (edges opened/closed), insights, and sentiment shifts. Pro+ (knowledge graph) feature.",
+        "summary": "List memories by customer identity",
         "tags": [
-          "Customers"
+          "Customer Memories"
         ],
         "security": [
           {
-            "bearerAuth": []
+            "apiKey": []
           }
         ],
         "parameters": [
           {
-            "in": "path",
-            "name": "id",
-            "required": true,
+            "in": "query",
+            "name": "customerId",
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            }
+          },
+          {
+            "in": "query",
+            "name": "phone",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "externalId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeExpired",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "in": "query",
+            "name": "asOf",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Journey timeline (max 100 events)"
+            "description": "Paginated customer memories"
           },
-          "403": {
-            "description": "Plan does not include the knowledge graph"
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a memory by customer identity",
+        "tags": [
+          "Customer Memories"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Memory created"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
+    "/customers/conversations": {
+      "get": {
+        "summary": "List conversations by customer identity",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "customerId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            }
+          },
+          {
+            "in": "query",
+            "name": "phone",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "externalId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated customer conversations"
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      },
+      "post": {
+        "summary": "Start a conversation by customer identity",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "channel"
+                ],
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "VOICE",
+                      "CHAT",
+                      "SMS",
+                      "EMAIL"
+                    ]
+                  },
+                  "metadata": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Conversation started"
           },
           "404": {
             "description": "Customer not found"
@@ -1571,7 +2126,7 @@
     "/customers/{id}/memories/ingest": {
       "post": {
         "summary": "Ingest a completed conversation for memory extraction",
-        "description": "Batch import endpoint — enqueue a completed conversation (full message history including both user and assistant turns) for asynchronous memory extraction. Use this for historical imports, CRM sync, or post-processing third-party transcripts. For real-time capture use POST /api/v1/capture instead.\n",
+        "description": "Batch import endpoint — enqueue a completed conversation (full message history including both user and assistant turns) for asynchronous memory extraction. Use this for historical imports, CRM sync, or post-processing third-party transcripts. For real-time capture use POST /api/v1/capture instead.\n\nMessage roles: `user` is the customer, `assistant` is your bot, `agent` is a human rep who took the conversation over, `system` is metadata. Memory extraction treats every non-`user` role as \"our side\" — it only cares which side spoke — but the conversation view distinguishes them.\n\n`speakerId` / `speakerName` attribute the conversation and any commitments made in it to a named human rep. Ignored unless that agent has attribution enabled in Agent Settings.\n\n> This endpoint was previously also reachable at > `POST /customers/{id}/memories/capture`. That alias was removed — it > was the same handler under a second name, and it collided confusingly > with the unrelated real-time `POST /api/v1/capture`.\n",
         "tags": [
           "Customer Memories"
         ],
@@ -1624,11 +2179,17 @@
                           "type": "string",
                           "enum": [
                             "user",
-                            "assistant"
+                            "assistant",
+                            "agent",
+                            "system"
                           ]
                         },
                         "content": {
                           "type": "string"
+                        },
+                        "language": {
+                          "type": "string",
+                          "description": "Optional BCP-47 source-language hint for this turn"
                         }
                       }
                     }
@@ -1642,6 +2203,25 @@
                       "EMAIL"
                     ],
                     "default": "CHAT"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP-47 fallback for turns without their own language hint"
+                  },
+                  "infer": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Set false to store each non-system message directly rather than infer memories with an LLM. Safety, embedding, exact dedupe, reconciliation, and speaker scope still apply.\n"
+                  },
+                  "speakerId": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "description": "External identifier for the attributed human rep"
+                  },
+                  "speakerName": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "description": "Optional display name for the attributed human rep"
                   }
                 }
               },
@@ -1750,6 +2330,39 @@
               "maximum": 4000
             },
             "description": "Token ceiling for the returned `context` block, for this call only. Omit to use the agent's configured budget, falling back to the default of 800. Values outside the range are clamped. The response always reports the actual size in `tokenCount`.\n"
+          },
+          {
+            "in": "query",
+            "name": "explain",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "When `true`, each returned memory carries a `scoreDetails` object reporting every term the ranking composite used: `semantic`, `keyword`, `entity`, `temporal`, `importance`, `liveStrength`, `composite`, the `weights` applied, the `threshold` cleared, the retrieval `path` (\"full\" | \"fast\" | \"fast-empty\") and the `source` (\"vector\" | \"keyword\" | \"both\").\n\nA term reports `null` when it was NOT computed on the path that served this request — never `0`. The fast path computes no semantic score, and rows admitted by keyword augmentation are not scored at all, so `null` and `0` are different claims. Diagnostic only: the ranking and the returned set are identical with or without it.\n"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalLimit"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalThreshold"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalRerank"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalLatestOnly"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalReferenceDate"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalIncludeAgentFacts"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalVerify"
           }
         ],
         "responses": {
@@ -1758,54 +2371,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "context": {
-                      "type": "string",
-                      "description": "Pre-formatted context string for LLM prompt injection"
-                    },
-                    "memories": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "fact": {
-                            "type": "string"
-                          },
-                          "category": {
-                            "type": "string"
-                          },
-                          "importance": {
-                            "type": "number"
-                          },
-                          "score": {
-                            "type": "number"
-                          }
-                        }
-                      }
-                    },
-                    "tokenCount": {
-                      "type": "integer",
-                      "description": "Total token count of the context string"
-                    }
-                  }
-                },
-                "example": {
-                  "context": "Known about this customer:\n- Prefers morning deliveries before 9 AM\n- Located in New York",
-                  "memories": [
-                    {
-                      "id": "m1a2b3c4-d5e6-7890-abcd-ef1234567890",
-                      "fact": "Prefers morning deliveries before 9 AM",
-                      "category": "preference",
-                      "importance": 0.85,
-                      "score": 0.78
-                    }
-                  ],
-                  "tokenCount": 42
+                  "$ref": "#/components/schemas/MemoryContext"
                 }
               }
             }
@@ -1865,6 +2431,39 @@
           },
           {
             "in": "query",
+            "name": "explain",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "When `true`, each returned memory carries a `scoreDetails` object reporting every term the ranking composite used: `semantic`, `keyword`, `entity`, `temporal`, `importance`, `liveStrength`, `composite`, the `weights` applied, the `threshold` cleared, the retrieval `path` (\"full\" | \"fast\" | \"fast-empty\") and the `source` (\"vector\" | \"keyword\" | \"both\").\n\nA term reports `null` when it was NOT computed on the path that served this request — never `0`. The fast path computes no semantic score, and rows admitted by keyword augmentation are not scored at all, so `null` and `0` are different claims. Diagnostic only: the ranking and the returned set are identical with or without it.\n"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalLimit"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalThreshold"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalRerank"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalLatestOnly"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalReferenceDate"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalIncludeAgentFacts"
+          },
+          {
+            "$ref": "#/components/parameters/RetrievalVerify"
+          },
+          {
+            "in": "query",
             "name": "phone",
             "schema": {
               "type": "string"
@@ -1915,7 +2514,7 @@
     "/customers/{id}/memories": {
       "get": {
         "summary": "List customer memories",
-        "description": "Retrieve a paginated list of stored memories for a customer.",
+        "description": "Retrieve active memories for a customer. Expired memories are excluded unless includeExpired=true is explicitly requested for operator history.\n",
         "tags": [
           "Customer Memories"
         ],
@@ -1964,6 +2563,24 @@
               "default": 20
             },
             "description": "Number of items per page"
+          },
+          {
+            "in": "query",
+            "name": "includeExpired",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Include expired and retained historical rows for explicit inspection"
+          },
+          {
+            "in": "query",
+            "name": "asOf",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Evaluate expiry and supersession at this ISO 8601 time"
           }
         ],
         "responses": {
@@ -1974,7 +2591,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": {
+                    "memories": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -1983,7 +2600,7 @@
                             "type": "string",
                             "format": "uuid"
                           },
-                          "fact": {
+                          "content": {
                             "type": "string"
                           },
                           "category": {
@@ -1995,6 +2612,40 @@
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "expiresAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "expiryIsFixed": {
+                            "type": "boolean"
+                          },
+                          "eventDate": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true,
+                            "description": "Grounded event time in UTC, distinct from capture time"
+                          },
+                          "eventDatePrecision": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": [
+                              "instant",
+                              "day",
+                              "month",
+                              "quarter",
+                              "year",
+                              "approximate"
+                            ]
+                          },
+                          "eventDateSource": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Exact temporal phrase retained from the source turn"
+                          },
+                          "isExpired": {
+                            "type": "boolean"
                           }
                         }
                       }
@@ -2072,22 +2723,23 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "fact": {
+                  "content": {
                     "type": "string"
                   },
                   "category": {
                     "type": "string"
                   },
-                  "importance": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true,
+                    "description": "Caller-owned expiry; null makes the memory permanently non-expiring"
                   }
                 }
               },
               "example": {
-                "fact": "Prefers afternoon deliveries after 2 PM",
-                "importance": 0.9
+                "content": "Prefers afternoon deliveries after 2 PM",
+                "expiresAt": "2026-12-01T10:00:00.000Z"
               }
             }
           }

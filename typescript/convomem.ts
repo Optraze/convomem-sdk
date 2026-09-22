@@ -12,6 +12,7 @@
 
 import type {
   CaptureResponse,
+  CaptureStatusResponse,
   Conversation,
   ConversationListResponse,
   ConvoMemConfig,
@@ -19,9 +20,8 @@ import type {
   CustomerCreateRequest,
   CustomerIdentity,
   CustomerListResponse,
-  CustomerStats,
-  CustomerUpdateRequest,
   CustomerLookupResponse,
+  CustomerUpdateRequest,
   EmbedTokenResponse,
   HandoffDestination,
   HandoffDestinationCreateRequest,
@@ -31,7 +31,6 @@ import type {
   Memory,
   MemoryContext,
   MemoryListResponse,
-  MergeCandidate,
   SocialHandle,
 } from "./types.ts";
 import { ConvoMemClient } from "./client.ts";
@@ -132,7 +131,11 @@ export class ConvoMem {
    * ```
    */
   async capture(
-    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
+    messages: Array<{
+      role: "user" | "assistant" | "agent" | "system";
+      content: string;
+      language?: string;
+    }>,
     identity: CustomerIdentity,
     options?: {
       channel?: "VOICE" | "CHAT" | "SMS" | "EMAIL";
@@ -149,6 +152,11 @@ export class ConvoMem {
       reason?: string;
       /** Deduplicate retries of the same capture. */
       idempotencyKey?: string;
+      language?: string;
+      occurredAt?: string;
+      infer?: boolean;
+      speakerId?: string;
+      speakerName?: string;
     },
   ): Promise<CaptureResponse> {
     return await this.#http.request<CaptureResponse>("POST", "/capture", {
@@ -161,6 +169,11 @@ export class ConvoMem {
         ...options,
       },
     });
+  }
+
+  /** Get queued, processing, completed, or failed state for a capture. */
+  async getCaptureStatus(captureId: string): Promise<CaptureStatusResponse> {
+    return await this.#http.getCaptureStatus(captureId);
   }
 
   // ── B. Memory Retrieval & Semantic Lookup ────────────────
@@ -203,22 +216,53 @@ export class ConvoMem {
        * of 800. A voice agent usually wants a tighter brief than an email one.
        */
       maxTokens?: number;
+      limit?: number;
+      threshold?: number;
+      rerank?: boolean;
+      latestOnly?: boolean;
+      explain?: boolean;
+      referenceDate?: string;
+      includeAgentFacts?: boolean;
+      verify?: boolean;
     },
   ): Promise<MemoryContext> {
     const params: Record<string, string> = { topic };
     if (identity.email) params.email = identity.email;
     if (identity.phone) params.phone = identity.phone;
     if (identity.externalId) params.externalId = identity.externalId;
-    if (options?.autoCreate !== undefined) params.autoCreate = String(options.autoCreate);
+    if (options?.autoCreate !== undefined) {
+      params.autoCreate = String(options.autoCreate);
+    }
     if (options?.userName) params.userName = options.userName;
-    if (options?.maxTokens !== undefined) params.maxTokens = String(options.maxTokens);
+    if (options) {
+      for (
+        const key of [
+          "maxTokens",
+          "limit",
+          "threshold",
+          "rerank",
+          "latestOnly",
+          "explain",
+          "referenceDate",
+          "includeAgentFacts",
+          "verify",
+        ] as const
+      ) {
+        const value = options[key];
+        if (value !== undefined) params[key] = String(value);
+      }
+    }
 
     if (identity.customerId) {
       // The path route already identifies the customer, so only the tuning
       // params travel with it — but they must still travel, or a caller
       // passing customerId would silently lose their maxTokens.
-      const pathParams: Record<string, string> = { topic };
-      if (params.maxTokens) pathParams.maxTokens = params.maxTokens;
+      const pathParams: Record<string, string> = { ...params };
+      delete pathParams.email;
+      delete pathParams.phone;
+      delete pathParams.externalId;
+      delete pathParams.autoCreate;
+      delete pathParams.userName;
       return await this.#http.request<MemoryContext>(
         "GET",
         `/customers/${identity.customerId}/memories/lookup`,
@@ -270,9 +314,13 @@ export class ConvoMem {
     if (identity.email) params.email = identity.email;
     if (identity.phone) params.phone = identity.phone;
     if (identity.externalId) params.externalId = identity.externalId;
-    if (options?.autoCreate !== undefined) params.autoCreate = String(options.autoCreate);
+    if (options?.autoCreate !== undefined) {
+      params.autoCreate = String(options.autoCreate);
+    }
     if (options?.userName) params.userName = options.userName;
-    if (options?.maxTokens !== undefined) params.maxTokens = String(options.maxTokens);
+    if (options?.maxTokens !== undefined) {
+      params.maxTokens = String(options.maxTokens);
+    }
 
     return await this.#http.request<CustomerLookupResponse>(
       "GET",
@@ -298,12 +346,22 @@ export class ConvoMem {
    */
   async listMemories(
     identity: CustomerIdentity,
-    options?: { page?: number; limit?: number; category?: string },
+    options?: {
+      page?: number;
+      limit?: number;
+      category?: string;
+      includeExpired?: boolean;
+      asOf?: string;
+    },
   ): Promise<MemoryListResponse> {
     const params: Record<string, string> = {};
     if (options?.page) params.page = String(options.page);
     if (options?.limit) params.limit = String(options.limit);
     if (options?.category) params.category = options.category;
+    if (options?.includeExpired !== undefined) {
+      params.includeExpired = String(options.includeExpired);
+    }
+    if (options?.asOf) params.asOf = options.asOf;
 
     if (identity.customerId) {
       return await this.#http.request<MemoryListResponse>(
@@ -348,7 +406,7 @@ export class ConvoMem {
   async addMemory(
     content: string,
     identity: CustomerIdentity,
-    options?: { category?: string },
+    options?: { category?: string; expiresAt?: string | null },
   ): Promise<Memory> {
     if (identity.customerId) {
       return await this.#http.request<Memory>(
@@ -389,7 +447,7 @@ export class ConvoMem {
    */
   async updateMemory(
     memoryId: string,
-    data: { content?: string; category?: string },
+    data: { content?: string; category?: string; expiresAt?: string | null },
     identity: CustomerIdentity,
   ): Promise<Memory> {
     if (!identity.customerId) {
@@ -448,7 +506,9 @@ export class ConvoMem {
    * ```
    */
   async createCustomer(data: CustomerCreateRequest): Promise<Customer> {
-    return await this.#http.request<Customer>("POST", "/customers", { body: data });
+    return await this.#http.request<Customer>("POST", "/customers", {
+      body: data,
+    });
   }
 
   /**
@@ -466,7 +526,13 @@ export class ConvoMem {
     page?: number;
     limit?: number;
     search?: string;
-    sortBy?: "name" | "memories" | "conversations" | "recent" | "created" | "sentiment";
+    sortBy?:
+      | "name"
+      | "memories"
+      | "conversations"
+      | "recent"
+      | "created"
+      | "sentiment";
     sortOrder?: "asc" | "desc";
     sentiment?: "positive" | "neutral" | "negative";
     minMemories?: number;
@@ -481,11 +547,17 @@ export class ConvoMem {
     if (options?.sortBy) params.sortBy = options.sortBy;
     if (options?.sortOrder) params.sortOrder = options.sortOrder;
     if (options?.sentiment) params.sentiment = options.sentiment;
-    if (options?.minMemories !== undefined) params.minMemories = String(options.minMemories);
-    if (options?.maxMemories !== undefined) params.maxMemories = String(options.maxMemories);
+    if (options?.minMemories !== undefined) {
+      params.minMemories = String(options.minMemories);
+    }
+    if (options?.maxMemories !== undefined) {
+      params.maxMemories = String(options.maxMemories);
+    }
     if (options?.from) params.from = options.from;
     if (options?.to) params.to = options.to;
-    return await this.#http.request<CustomerListResponse>("GET", "/customers", { params });
+    return await this.#http.request<CustomerListResponse>("GET", "/customers", {
+      params,
+    });
   }
 
   /**
@@ -513,7 +585,9 @@ export class ConvoMem {
     if (identity.email) params.email = identity.email;
     if (identity.phone) params.phone = identity.phone;
     if (identity.externalId) params.externalId = identity.externalId;
-    const res = await this.#http.request<{ customer: Customer | null; found: boolean }>(
+    const res = await this.#http.request<
+      { customer: Customer | null; found: boolean }
+    >(
       "GET",
       "/customers/lookup",
       { params },
@@ -590,69 +664,6 @@ export class ConvoMem {
     return await this.#http.request<void>("DELETE", "/customers", { params });
   }
 
-  /**
-   * List customer profiles flagged as potential duplicates.
-   *
-   * @returns Array of merge candidate pairs.
-   *
-   * @example
-   * ```ts
-   * const candidates = await client.listMergeCandidates();
-   * ```
-   */
-  async listMergeCandidates(): Promise<MergeCandidate[]> {
-    return await this.#http.request<MergeCandidate[]>(
-      "GET",
-      "/customers/merge-candidates",
-    );
-  }
-
-  /**
-   * Dismiss a merge candidate as a false positive.
-   *
-   * @param customerId - Primary customer UUID.
-   * @param candidateId - Candidate customer UUID.
-   *
-   * @example
-   * ```ts
-   * await client.dismissMergeCandidate("cust-1", "cust-2");
-   * ```
-   */
-  async dismissMergeCandidate(
-    customerId: string,
-    candidateId: string,
-  ): Promise<void> {
-    return await this.#http.request<void>(
-      "POST",
-      `/customers/${customerId}/merge-candidates/${candidateId}/dismiss`,
-    );
-  }
-
-  /**
-   * Return aggregate customer statistics for the agent this API key is bound to.
-   *
-   * These are not org-wide totals: a key bound to a different agent returns
-   * different numbers for the same organization.
-   *
-   * @param options - Optional ISO date range filter (`from`, `to`).
-   * @returns Per-agent stats: counts, averages, sentiment breakdown.
-   *
-   * @example
-   * ```ts
-   * const stats = await client.getStats({ from: "2026-01-01" });
-   * ```
-   */
-  async getStats(options?: { from?: string; to?: string }): Promise<CustomerStats> {
-    const params: Record<string, string> = {};
-    if (options?.from) params.from = options.from;
-    if (options?.to) params.to = options.to;
-    return await this.#http.request<CustomerStats>(
-      "GET",
-      "/customers/stats",
-      { params },
-    );
-  }
-
   // ── E. Conversation Session Management ───────────────────
 
   /**
@@ -675,7 +686,10 @@ export class ConvoMem {
    */
   async startConversation(
     identity: CustomerIdentity,
-    options: { channel: "VOICE" | "CHAT" | "SMS" | "EMAIL"; metadata?: Record<string, unknown> },
+    options: {
+      channel: "VOICE" | "CHAT" | "SMS" | "EMAIL";
+      metadata?: Record<string, unknown>;
+    },
   ): Promise<Conversation> {
     if (identity.customerId) {
       return await this.#http.request<Conversation>(
@@ -860,7 +874,9 @@ export class ConvoMem {
   ): Promise<HandoffResponse> {
     const params: Record<string, string> = {};
     if (options?.fresh !== undefined) params.fresh = String(options.fresh);
-    if (options?.narrative !== undefined) params.narrative = String(options.narrative);
+    if (options?.narrative !== undefined) {
+      params.narrative = String(options.narrative);
+    }
 
     if (identity.customerId) {
       return await this.#http.request<HandoffResponse>(
@@ -934,15 +950,19 @@ export class ConvoMem {
     identity: CustomerIdentity,
     options?: { format?: "generic" | "dograh" },
   ): Promise<HandoffRouteResponse> {
-    return await this.#http.request<HandoffRouteResponse>("POST", "/handoff/route", {
-      params: options?.format ? { format: options.format } : undefined,
-      body: {
-        customerId: identity.customerId,
-        externalId: identity.externalId,
-        email: identity.email,
-        phone: identity.phone,
+    return await this.#http.request<HandoffRouteResponse>(
+      "POST",
+      "/handoff/route",
+      {
+        params: options?.format ? { format: options.format } : undefined,
+        body: {
+          customerId: identity.customerId,
+          externalId: identity.externalId,
+          email: identity.email,
+          phone: identity.phone,
+        },
       },
-    });
+    );
   }
 
   /**
@@ -1048,14 +1068,18 @@ export class ConvoMem {
     identity: CustomerIdentity,
     options?: { ttlSeconds?: number },
   ): Promise<EmbedTokenResponse> {
-    return await this.#http.request<EmbedTokenResponse>("POST", "/embed/tokens", {
-      body: {
-        customerId: identity.customerId,
-        externalId: identity.externalId,
-        email: identity.email,
-        phone: identity.phone,
-        ...options,
+    return await this.#http.request<EmbedTokenResponse>(
+      "POST",
+      "/embed/tokens",
+      {
+        body: {
+          customerId: identity.customerId,
+          externalId: identity.externalId,
+          email: identity.email,
+          phone: identity.phone,
+          ...options,
+        },
       },
-    });
+    );
   }
 }

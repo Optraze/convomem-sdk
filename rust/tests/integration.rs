@@ -116,7 +116,16 @@ async fn test_memory_lifecycle() {
     println!("Found {} memories", memories.total);
 
     // Lookup memories
-    let ctx = client.lookup_memories(&customer.id, "preference").await.unwrap();
+    let ctx = client
+        .lookup_memories(
+            &customer.id,
+            &MemoryLookupParams {
+                topic: "preference".to_string(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     // Context may be empty if no memories exist for this topic
     println!("Memory context length: {}", ctx.context.len());
 

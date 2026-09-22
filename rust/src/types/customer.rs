@@ -30,31 +30,6 @@ impl CustomerIdentity {
     }
 }
 
-/// Aggregate customer statistics for the agent the API key is bound to.
-///
-/// Scoped to that one agent, not the whole organization.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CustomerStats {
-    pub total_customers: u32,
-    pub total_memories: u32,
-    pub avg_memories: f64,
-    pub total_conversations: u32,
-    pub active7d: u32,
-    pub positive: u32,
-    pub neutral: u32,
-    pub negative: u32,
-}
-
-/// A pair of customer profiles flagged as potential duplicates.
-#[derive(Debug, Deserialize)]
-pub struct MergeCandidate {
-    pub customer: Customer,
-    pub candidate: Customer,
-    #[serde(default)]
-    pub similarity: Option<f64>,
-}
-
 #[derive(Debug, Default, Serialize)]
 pub struct CustomerLookupParams {
     #[serde(skip_serializing_if = "Option::is_none")]

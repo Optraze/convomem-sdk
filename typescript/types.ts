@@ -30,6 +30,8 @@ export interface ConvoMemConfig {
    * lands under that agent and every read returns only that agent's data.
    */
   apiKey: string;
+  /** API root including `/api/v1` (defaults to the hosted ConvoMem API). */
+  baseUrl?: string;
   /** Custom fetch implementation (for testing or Deno Deploy) */
   fetch?: typeof globalThis.fetch;
   /** Request timeout in milliseconds (default: 30000) */
@@ -63,7 +65,11 @@ export interface CaptureRequest {
   /** Single user message (simple form). Required if messages not provided. */
   message?: string;
   /** Full conversation turns. Required if message not provided. */
-  messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
+  messages?: Array<{
+    role: "user" | "assistant" | "agent" | "system";
+    content: string;
+    language?: string;
+  }>;
   /** Customer UUID */
   customerId?: string;
   /** External system identifier */
@@ -76,6 +82,12 @@ export interface CaptureRequest {
   userName?: string;
   /** Channel (default: CHAT) */
   channel?: "VOICE" | "CHAT" | "SMS" | "EMAIL";
+  /** BCP-47 fallback language for turns without their own hint. */
+  language?: string;
+  /** ISO 8601 source time for historical transcript imports. */
+  occurredAt?: string;
+  /** Set false to persist non-system turns without LLM inference. */
+  infer?: boolean;
   /**
    * Social handles, as bare strings (`"@jane"`) or with an explicit platform.
    * Counts as an identity field in its own right.
@@ -101,6 +113,10 @@ export interface CaptureRequest {
   escalate?: boolean;
   /** Reason recorded when `escalate` is true. */
   reason?: string;
+  /** External identifier of the human rep handling this conversation. */
+  speakerId?: string;
+  /** Display name for the attributed human rep. */
+  speakerName?: string;
 }
 
 /**
@@ -132,12 +148,28 @@ export interface CaptureResponse {
   conversationId: string;
   /** Unique identifier of the customer */
   customerId: string;
+  /** Pollable asynchronous extraction job ID. */
+  captureId: string;
+  /** Initial asynchronous extraction status. */
+  captureStatus: "queued";
   /** Conversation status */
   status: "new" | "active";
   /** Whether this capture created a new conversation */
   isNewConversation: boolean;
   /** Whether this capture created a new customer */
   isNewCustomer: boolean;
+}
+
+/** Pollable state of an asynchronous capture job. */
+export interface CaptureStatusResponse {
+  captureId: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  attempts: number;
+  result?: Record<string, unknown>;
+  error?: string;
 }
 
 // ── Customers ───────────────────────────────────────────
@@ -507,6 +539,24 @@ export interface Memory {
   sentiment?: string | null;
   /** Original conversation context where this memory was extracted, or null */
   sourceContext?: string | null;
+  occurredAt?: string | null;
+  eventDate?: string | null;
+  eventDatePrecision?:
+    | "instant"
+    | "day"
+    | "month"
+    | "quarter"
+    | "year"
+    | "approximate"
+    | null;
+  eventDateSource?: string | null;
+  language?: string;
+  languageSource?: string;
+  expiresAt?: string | null;
+  expiryIsFixed?: boolean;
+  isExpired?: boolean;
+  speaker?: "customer" | "agent";
+  scoreDetails?: Record<string, unknown>;
   /** Topic key for scoped retrieval */
   topicKey?: string;
   /** Durability score indicating how long-lasting this fact is (0.0 to 1.0) */
@@ -532,9 +582,17 @@ export interface Memory {
  */
 export interface MemoryIngestRequest {
   /** Conversation messages to extract memories from */
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  messages: Array<{
+    role: "user" | "assistant" | "agent" | "system";
+    content: string;
+    language?: string;
+  }>;
   /** Communication channel (default: CHAT) */
   channel?: "VOICE" | "CHAT" | "SMS" | "EMAIL";
+  language?: string;
+  infer?: boolean;
+  speakerId?: string;
+  speakerName?: string;
 }
 
 /**
@@ -549,6 +607,14 @@ export interface MemoryLookupParams {
    * back to the default of 800.
    */
   maxTokens?: number;
+  limit?: number;
+  threshold?: number;
+  rerank?: boolean;
+  latestOnly?: boolean;
+  explain?: boolean;
+  referenceDate?: string;
+  includeAgentFacts?: boolean;
+  verify?: boolean;
   /** Customer phone number */
   phone?: string;
   /** Customer email address */
@@ -567,6 +633,7 @@ export interface MemoryContext {
   tokenCount: number;
   /** Individual memory records included in the context */
   memories: Memory[];
+  retrievalConfig?: Record<string, unknown>;
 }
 
 /**
@@ -591,6 +658,7 @@ export interface MemoryUpdateRequest {
   content?: string;
   /** Updated category */
   category?: string;
+  expiresAt?: string | null;
 }
 
 /**
@@ -601,34 +669,7 @@ export interface MemoryAddRequest {
   content: string;
   /** Memory category */
   category?: string;
-}
-
-/**
- * Parameters for looking up feedback-associated memories.
- */
-export interface FeedbackLookupRequest {
-  /** Customer UUID */
-  customerId?: string;
-  /** Customer phone number */
-  phone?: string;
-  /** Customer email address */
-  email?: string;
-  /** External system identifier */
-  externalId?: string;
-  /** Topic to scope the lookup */
-  topic?: string;
-}
-
-/**
- * Response from a feedback lookup operation.
- */
-export interface FeedbackLookupResponse {
-  /** Whether feedback was found for the customer */
-  found: boolean;
-  /** Feedback data as key-value pairs */
-  feedback?: Record<string, unknown>;
-  /** Memories associated with the feedback */
-  memories?: Memory[];
+  expiresAt?: string | null;
 }
 
 // ── Conversations ───────────────────────────────────────
@@ -831,10 +872,12 @@ export type HandoffRouteSource =
  */
 export interface HandoffRouteResponse {
   /** The chosen destination, or null when none is configured */
-  destination: Pick<
-    HandoffDestination,
-    "id" | "name" | "type" | "value" | "transferMessage"
-  > | null;
+  destination:
+    | Pick<
+      HandoffDestination,
+      "id" | "name" | "type" | "value" | "transferMessage"
+    >
+    | null;
   /** Which tier produced this answer */
   source: HandoffRouteSource;
   /** Why this destination was chosen for this customer */
@@ -860,42 +903,4 @@ export interface CustomerIdentity {
   email?: string;
   /** Customer phone number (E.164 preferred, e.g. +14155550101) */
   phone?: string;
-}
-
-// ── Stats & merge candidates ─────────────────────────────
-
-/**
- * Aggregate customer statistics for the agent the API key is bound to.
- *
- * Scoped to that one agent, not the whole organization.
- */
-export interface CustomerStats {
-  /** Number of customers who have talked to this agent */
-  totalCustomers: number;
-  /** Total memories this agent has stored */
-  totalMemories: number;
-  /** Average memories per customer */
-  avgMemories: number;
-  /** Total conversations held by this agent */
-  totalConversations: number;
-  /** Customers active in the last 7 days */
-  active7d: number;
-  /** Number of customers with positive sentiment */
-  positive: number;
-  /** Number of customers with neutral sentiment */
-  neutral: number;
-  /** Number of customers with negative sentiment */
-  negative: number;
-}
-
-/**
- * A pair of customer profiles flagged as potential duplicates.
- */
-export interface MergeCandidate {
-  /** Primary customer record */
-  customer: Customer;
-  /** Candidate duplicate customer record */
-  candidate: Customer;
-  /** Similarity score (0.0 to 1.0) */
-  similarity?: number;
 }

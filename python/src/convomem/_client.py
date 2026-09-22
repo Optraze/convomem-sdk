@@ -8,7 +8,7 @@ import httpx
 from pydantic import BaseModel
 
 from convomem._errors import ConvoMemApiError, ConvoMemError, ConvoMemTimeoutError
-from convomem._types import CaptureRequest, CaptureResponse
+from convomem._types import CaptureRequest, CaptureResponse, CaptureStatusResponse
 
 DEFAULT_BASE_URL = "https://api.convomem.com/api/v1"
 T = TypeVar("T", bound=BaseModel)
@@ -30,6 +30,7 @@ class ConvoMemClient:
         self,
         api_key: str,
         *,
+        base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30.0,
         max_retries: int = 0,
         retry_delay: float = 1.0,
@@ -39,7 +40,7 @@ class ConvoMemClient:
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._http = httpx.Client(
-            base_url=DEFAULT_BASE_URL,
+            base_url=base_url.rstrip("/"),
             headers={"X-API-Key": self._api_key},
             timeout=httpx.Timeout(timeout),
         )
@@ -64,6 +65,14 @@ class ConvoMemClient:
             response_type=CaptureResponse,
         )
         assert result is not None, "/capture should always return a response"
+        return result
+
+    def get_capture_status(self, capture_id: str) -> CaptureStatusResponse:
+        """Get queued, processing, completed, or failed state for a capture."""
+        result = self._request(
+            "GET", f"/capture/{capture_id}", response_type=CaptureStatusResponse
+        )
+        assert result is not None
         return result
 
     def _request(

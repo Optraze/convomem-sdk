@@ -32,7 +32,6 @@ class CustomerIdentity:
 # ── Config ──────────────────────────────────────────────
 
 
-
 # ── Capture ─────────────────────────────────────────────
 
 
@@ -41,11 +40,13 @@ class Message(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    role: Literal["user", "assistant", "system"]
+    role: Literal["user", "assistant", "agent", "system"]
     """Message role."""
 
     content: str
     """Message content text."""
+
+    language: str | None = None
 
 
 class CaptureRequest(BaseModel):
@@ -77,6 +78,10 @@ class CaptureRequest(BaseModel):
     channel: Literal["VOICE", "CHAT", "SMS", "EMAIL"] | None = Field(default=None, alias="channel")
     """Communication channel (default: CHAT)."""
 
+    language: str | None = None
+    occurred_at: str | None = Field(default=None, alias="occurredAt")
+    infer: bool | None = None
+
     social_handles: list[str | SocialHandle] | None = Field(default=None, alias="socialHandles")
     """Social handles, as bare strings or with an explicit platform.
 
@@ -104,6 +109,9 @@ class CaptureRequest(BaseModel):
     reason: str | None = Field(default=None, alias="reason")
     """Reason recorded when ``escalate`` is set."""
 
+    speaker_id: str | None = Field(default=None, alias="speakerId")
+    speaker_name: str | None = Field(default=None, alias="speakerName")
+
 
 class SocialHandle(BaseModel):
     """A social handle used as a customer identifier."""
@@ -128,6 +136,9 @@ class CaptureResponse(BaseModel):
     customer_id: str = Field(alias="customerId")
     """Unique identifier of the customer."""
 
+    capture_id: str = Field(alias="captureId")
+    capture_status: Literal["queued"] = Field(alias="captureStatus")
+
     status: Literal["new", "active"]
     """Conversation status."""
 
@@ -136,6 +147,21 @@ class CaptureResponse(BaseModel):
 
     is_new_customer: bool = Field(alias="isNewCustomer")
     """Whether this capture created a new customer."""
+
+
+class CaptureStatusResponse(BaseModel):
+    """Pollable state of an asynchronous capture job."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    capture_id: str = Field(alias="captureId")
+    status: Literal["queued", "processing", "completed", "failed"]
+    created_at: str = Field(alias="createdAt")
+    started_at: str | None = Field(alias="startedAt")
+    completed_at: str | None = Field(alias="completedAt")
+    attempts: int
+    result: dict[str, Any] | None = None
+    error: str | None = None
 
 
 # ── Customers ───────────────────────────────────────────
@@ -317,54 +343,6 @@ class CustomerListResponse(BaseModel):
 
     total: int
     """Total number of matching customers."""
-
-
-class CustomerStats(BaseModel):
-    """Aggregate customer statistics for the agent the API key is bound to.
-
-    Scoped to that one agent, not the whole organization.
-    """
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    total_customers: int = Field(alias="totalCustomers")
-    """Number of customers who have talked to this agent."""
-
-    total_memories: int = Field(alias="totalMemories")
-    """Total memories this agent has stored."""
-
-    avg_memories: float = Field(alias="avgMemories")
-    """Average memories per customer."""
-
-    total_conversations: int = Field(alias="totalConversations")
-    """Total conversations held by this agent."""
-
-    active7d: int
-    """Customers active in the last 7 days."""
-
-    positive: int
-    """Customers with positive sentiment."""
-
-    neutral: int
-    """Customers with neutral sentiment."""
-
-    negative: int
-    """Customers with negative sentiment."""
-
-
-class MergeCandidate(BaseModel):
-    """A pair of customer profiles flagged as potential duplicates."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    customer: Customer
-    """Primary customer record."""
-
-    candidate: Customer
-    """Potential duplicate customer record."""
-
-    similarity: float | None = None
-    """Similarity score (0.0 to 1.0), or None if unavailable."""
 
 
 # ── Handoff ─────────────────────────────────────────────
@@ -616,6 +594,18 @@ class Memory(BaseModel):
     source_context: str | None = Field(default=None, alias="sourceContext")
     """Original conversation context where this memory was extracted, or None."""
 
+    occurred_at: str | None = Field(default=None, alias="occurredAt")
+    event_date: str | None = Field(default=None, alias="eventDate")
+    event_date_precision: str | None = Field(default=None, alias="eventDatePrecision")
+    event_date_source: str | None = Field(default=None, alias="eventDateSource")
+    language: str | None = None
+    language_source: str | None = Field(default=None, alias="languageSource")
+    expires_at: str | None = Field(default=None, alias="expiresAt")
+    expiry_is_fixed: bool | None = Field(default=None, alias="expiryIsFixed")
+    is_expired: bool | None = Field(default=None, alias="isExpired")
+    speaker: Literal["customer", "agent"] | None = None
+    score_details: dict[str, Any] | None = Field(default=None, alias="scoreDetails")
+
     topic_key: str | None = Field(default=None, alias="topicKey")
     """Topic key for scoped retrieval."""
 
@@ -655,6 +645,11 @@ class MemoryIngestRequest(BaseModel):
     channel: Literal["VOICE", "CHAT", "SMS", "EMAIL"] | None = Field(default=None, alias="channel")
     """Communication channel (default: CHAT)."""
 
+    language: str | None = None
+    infer: bool | None = None
+    speaker_id: str | None = Field(default=None, alias="speakerId")
+    speaker_name: str | None = Field(default=None, alias="speakerName")
+
 
 class MemoryIngestResponse(BaseModel):
     """Response from memory ingestion."""
@@ -683,6 +678,15 @@ class MemoryLookupParams(BaseModel):
     to the default of 800.
     """
 
+    limit: int | None = None
+    threshold: float | None = None
+    rerank: bool | None = None
+    latest_only: bool | None = Field(default=None, alias="latestOnly")
+    explain: bool | None = None
+    reference_date: str | None = Field(default=None, alias="referenceDate")
+    include_agent_facts: bool | None = Field(default=None, alias="includeAgentFacts")
+    verify: bool | None = None
+
     phone: str | None = Field(default=None, alias="phone")
     """Customer phone number."""
 
@@ -706,6 +710,8 @@ class MemoryContext(BaseModel):
 
     memories: list[Memory]
     """Individual memory records included in the context."""
+
+    retrieval_config: dict[str, Any] | None = Field(default=None, alias="retrievalConfig")
 
 
 class MemoryListResponse(BaseModel):
@@ -740,6 +746,8 @@ class MemoryUpdateRequest(BaseModel):
     importance: float | None = Field(default=None, alias="importance")
     """Updated importance score (0.0 to 1.0)."""
 
+    expires_at: str | None = Field(default=None, alias="expiresAt")
+
 
 class MemoryAddRequest(BaseModel):
     """Request payload for manually adding a memory."""
@@ -758,41 +766,7 @@ class MemoryAddRequest(BaseModel):
     memory_type: str | None = Field(default=None, alias="memoryType")
     """Memory type classification."""
 
-
-class FeedbackLookupRequest(BaseModel):
-    """Parameters for looking up feedback-associated memories."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    customer_id: str | None = Field(default=None, alias="customerId")
-    """Customer UUID."""
-
-    phone: str | None = Field(default=None, alias="phone")
-    """Customer phone number."""
-
-    email: str | None = Field(default=None, alias="email")
-    """Customer email address."""
-
-    external_id: str | None = Field(default=None, alias="externalId")
-    """External system identifier."""
-
-    topic: str | None = Field(default=None, alias="topic")
-    """Topic to scope the lookup."""
-
-
-class FeedbackLookupResponse(BaseModel):
-    """Response from a feedback lookup operation."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    found: bool
-    """Whether feedback was found for the customer."""
-
-    feedback: dict[str, Any] | None = Field(default=None, alias="feedback")
-    """Feedback data as key-value pairs."""
-
-    memories: list[Memory] | None = Field(default=None, alias="memories")
-    """Memories associated with the feedback."""
+    expires_at: str | None = Field(default=None, alias="expiresAt")
 
 
 # ── Conversations ───────────────────────────────────────
@@ -849,7 +823,6 @@ class ConversationEndRequest(BaseModel):
     """Outcome of the conversation."""
 
 
-
 class ConversationEscalateRequest(BaseModel):
     """Request to escalate a conversation."""
 
@@ -857,7 +830,6 @@ class ConversationEscalateRequest(BaseModel):
 
     reason: str | None = None
     """Reason for escalation."""
-
 
 
 # ── Embed ───────────────────────────────────────────────

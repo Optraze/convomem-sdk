@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from convomem._types import (
-    FeedbackLookupResponse,
     Memory,
     MemoryContext,
     MemoryIngestResponse,
@@ -16,11 +15,18 @@ if TYPE_CHECKING:
     from convomem._async_client import AsyncConvoMemClient
     from convomem._client import ConvoMemClient
     from convomem._types import (
-        FeedbackLookupRequest,
         MemoryAddRequest,
         MemoryIngestRequest,
         MemoryUpdateRequest,
     )
+
+
+def _lookup_query(params: MemoryLookupParams) -> dict[str, str]:
+    data = params.model_dump(by_alias=True, exclude_none=True)
+    return {
+        key: str(value).lower() if isinstance(value, bool) else str(value)
+        for key, value in data.items()
+    }
 
 
 class MemoriesResource(_BaseResource):
@@ -46,12 +52,13 @@ class MemoriesResource(_BaseResource):
         self,
         customer_id: str,
         topic: str,
+        **options: Any,
     ) -> Any:
         """Look up relevant memories for a topic by customer ID."""
         return self._client._request(
             "GET",
             f"/customers/{customer_id}/memories/lookup",
-            params={"topic": topic},
+            params=_lookup_query(MemoryLookupParams(topic=topic, **options)),
             response_type=MemoryContext,
         )
 
@@ -60,13 +67,7 @@ class MemoriesResource(_BaseResource):
         params: MemoryLookupParams,
     ) -> MemoryContext | None:
         """Look up relevant memories by customer identity (no UUID required)."""
-        query: dict[str, str] = {"topic": params.topic}
-        if params.phone is not None:
-            query["phone"] = params.phone
-        if params.email is not None:
-            query["email"] = params.email
-        if params.external_id is not None:
-            query["externalId"] = params.external_id
+        query = _lookup_query(params)
         return self._client._request(
             "GET", "/customers/memories/lookup", params=query, response_type=MemoryContext
         )
@@ -77,6 +78,8 @@ class MemoriesResource(_BaseResource):
         *,
         page: int | None = None,
         limit: int | None = None,
+        include_expired: bool | None = None,
+        as_of: str | None = None,
     ) -> Any:
         """List all memories for a customer with pagination."""
         query: dict[str, str] = {}
@@ -84,6 +87,10 @@ class MemoriesResource(_BaseResource):
             query["page"] = str(page)
         if limit is not None:
             query["limit"] = str(limit)
+        if include_expired is not None:
+            query["includeExpired"] = str(include_expired).lower()
+        if as_of is not None:
+            query["asOf"] = as_of
         return self._client._request(
             "GET",
             f"/customers/{customer_id}/memories",
@@ -135,18 +142,6 @@ class MemoriesResource(_BaseResource):
         """Delete a customer memory permanently."""
         self._client._request("DELETE", f"/customers/{customer_id}/memories/{mem_id}")
 
-    def lookup_feedback(
-        self,
-        request: FeedbackLookupRequest,
-    ) -> Any:
-        """Look up feedback-associated memories."""
-        return self._client._request(
-            "POST",
-            "/memories/lookup-feedback",
-            body=request.model_dump(by_alias=True, exclude_none=True),
-            response_type=FeedbackLookupResponse,
-        )
-
 
 class AsyncMemoriesResource(_BaseResource):
     """Asynchronous resource for managing customer memories."""
@@ -171,22 +166,26 @@ class AsyncMemoriesResource(_BaseResource):
         self,
         customer_id: str,
         topic: str,
+        **options: Any,
     ) -> Any:
         """Look up relevant memories for a topic by customer ID."""
         return await self._client._request(
             "GET",
             f"/customers/{customer_id}/memories/lookup",
-            params={"topic": topic},
+            params=_lookup_query(MemoryLookupParams(topic=topic, **options)),
             response_type=MemoryContext,
         )
 
     async def lookup_by_identity(
         self,
-        params: dict[str, str],
+        params: MemoryLookupParams,
     ) -> Any:
         """Look up relevant memories by customer identity (no UUID required)."""
         return await self._client._request(
-            "GET", "/customers/memories/lookup", params=params, response_type=MemoryContext
+            "GET",
+            "/customers/memories/lookup",
+            params=_lookup_query(params),
+            response_type=MemoryContext,
         )
 
     async def list(
@@ -195,6 +194,8 @@ class AsyncMemoriesResource(_BaseResource):
         *,
         page: int | None = None,
         limit: int | None = None,
+        include_expired: bool | None = None,
+        as_of: str | None = None,
     ) -> Any:
         """List all memories for a customer with pagination."""
         query: dict[str, str] = {}
@@ -202,6 +203,10 @@ class AsyncMemoriesResource(_BaseResource):
             query["page"] = str(page)
         if limit is not None:
             query["limit"] = str(limit)
+        if include_expired is not None:
+            query["includeExpired"] = str(include_expired).lower()
+        if as_of is not None:
+            query["asOf"] = as_of
         return await self._client._request(
             "GET",
             f"/customers/{customer_id}/memories",
@@ -252,15 +257,3 @@ class AsyncMemoriesResource(_BaseResource):
     ) -> None:
         """Delete a customer memory permanently."""
         await self._client._request("DELETE", f"/customers/{customer_id}/memories/{mem_id}")
-
-    async def lookup_feedback(
-        self,
-        request: FeedbackLookupRequest,
-    ) -> Any:
-        """Look up feedback-associated memories."""
-        return await self._client._request(
-            "POST",
-            "/memories/lookup-feedback",
-            body=request.model_dump(by_alias=True, exclude_none=True),
-            response_type=FeedbackLookupResponse,
-        )

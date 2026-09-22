@@ -18,12 +18,14 @@ def client() -> ConvoMemClient:
 
 
 class TestClientConstruction:
-    # The base URL is not configurable: there is one hosted API, and letting
-    # callers point an org API key at an arbitrary host is a footgun, not a
-    # feature. These assert the URL the client actually talks to.
     def test_targets_the_hosted_api(self, client: ConvoMemClient):
         # httpx normalises a base URL to a trailing slash, so compare on that.
         assert str(client._http.base_url) == "https://api.convomem.com/api/v1/"
+
+    def test_accepts_a_custom_base_url(self):
+        client = ConvoMemClient(api_key="test-key", base_url="http://localhost:9000/api/v1/")
+        assert str(client._http.base_url) == "http://localhost:9000/api/v1/"
+        client.close()
 
     def test_sends_the_api_key_header(self, client: ConvoMemClient):
         assert client._http.headers["X-API-Key"] == "test-key"
@@ -42,6 +44,8 @@ class TestCapture:
                 json={
                     "conversationId": "conv-123",
                     "customerId": "cust-456",
+                    "captureId": "cap-789",
+                    "captureStatus": "queued",
                     "status": "new",
                     "isNewConversation": True,
                     "isNewCustomer": True,
@@ -65,6 +69,8 @@ class TestCapture:
                 json={
                     "conversationId": "conv-1",
                     "customerId": "cust-1",
+                    "captureId": "cap-1",
+                    "captureStatus": "queued",
                     "status": "new",
                     "isNewConversation": False,
                     "isNewCustomer": False,
@@ -75,6 +81,26 @@ class TestCapture:
         client.capture(CaptureRequest(message="Test"))
 
         assert route.calls[0].request.headers["X-API-Key"] == "test-key"
+
+    @respx.mock
+    def test_get_capture_status(self, client: ConvoMemClient):
+        respx.get("https://api.convomem.com/api/v1/capture/cap-1").mock(
+            return_value=Response(
+                200,
+                json={
+                    "captureId": "cap-1",
+                    "status": "completed",
+                    "createdAt": "2026-09-22T00:00:00Z",
+                    "startedAt": None,
+                    "completedAt": "2026-09-22T00:00:01Z",
+                    "attempts": 1,
+                },
+            )
+        )
+
+        result = client.get_capture_status("cap-1")
+
+        assert result.status == "completed"
 
 
 class TestCustomers:
@@ -147,6 +173,25 @@ class TestCustomers:
 
 
 class TestMemories:
+    @respx.mock
+    def test_lookup_forwards_public_controls(self, client: ConvoMemClient):
+        route = respx.get("https://api.convomem.com/api/v1/customers/cust-1/memories/lookup").mock(
+            return_value=Response(200, json={"context": "", "tokenCount": 0, "memories": []})
+        )
+
+        client.memories.lookup(
+            "cust-1",
+            "billing",
+            max_tokens=400,
+            explain=True,
+            include_agent_facts=True,
+        )
+
+        query = dict(route.calls[0].request.url.params)
+        assert query["maxTokens"] == "400"
+        assert query["explain"] == "true"
+        assert query["includeAgentFacts"] == "true"
+
     @respx.mock
     def test_list_memories(self, client: ConvoMemClient):
         respx.get("https://api.convomem.com/api/v1/customers/cust-1/memories").mock(

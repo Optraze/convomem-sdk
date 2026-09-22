@@ -5,11 +5,12 @@ the path-based route is used (``/customers/:id/…``).  Otherwise the flat
 route is used and the server resolves the identity from email/phone/externalId.
 No client-side lookup round-trip in either case.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from convomem._types import CustomerIdentity as CustomerIdentity  # noqa: F401
+from convomem._types import CustomerIdentity as CustomerIdentity  # noqa: TC001
 
 if TYPE_CHECKING:
     from convomem._async_client import AsyncConvoMemClient
@@ -38,6 +39,22 @@ def _identity_params(identity: CustomerIdentity) -> dict[str, str]:
     return _identity_body(identity)
 
 
+def _lookup_options(**values: Any) -> dict[str, str]:
+    aliases = {
+        "max_tokens": "maxTokens",
+        "latest_only": "latestOnly",
+        "reference_date": "referenceDate",
+        "include_agent_facts": "includeAgentFacts",
+    }
+    result: dict[str, str] = {}
+    for key, value in values.items():
+        if value is not None:
+            result[aliases.get(key, key)] = (
+                str(value).lower() if isinstance(value, bool) else str(value)
+            )
+    return result
+
+
 # ── Sync ConvoMem ─────────────────────────────────────────────────────────────
 
 
@@ -53,7 +70,10 @@ class ConvoMem:
         ctx = client.lookup("billing question", CustomerIdentity(email="alice@example.com"))
         # … generate reply using ctx.context …
         client.capture(
-            [{"role": "user", "content": "What's my invoice?"}, {"role": "assistant", "content": "…"}],
+            [
+                {"role": "user", "content": "What's my invoice?"},
+                {"role": "assistant", "content": "…"},
+            ],
             CustomerIdentity(email="alice@example.com"),
             channel="CHAT",
         )
@@ -63,6 +83,7 @@ class ConvoMem:
         self,
         api_key: str,
         *,
+        base_url: str = "https://api.convomem.com/api/v1",
         timeout: float = 10.0,
         max_retries: int = 3,
         retry_delay: float = 1.0,
@@ -71,6 +92,7 @@ class ConvoMem:
 
         self._http: ConvoMemClient = ConvoMemClient(
             api_key=api_key,
+            base_url=base_url,
             timeout=timeout,
             max_retries=max_retries,
             retry_delay=retry_delay,
@@ -91,6 +113,11 @@ class ConvoMem:
         outcome: str | None = None,
         escalate: bool | None = None,
         reason: str | None = None,
+        language: str | None = None,
+        occurred_at: str | None = None,
+        infer: bool | None = None,
+        speaker_id: str | None = None,
+        speaker_name: str | None = None,
     ) -> Any:
         """Send conversation turns for background memory extraction.
 
@@ -133,9 +160,23 @@ class ConvoMem:
             body["escalate"] = escalate
         if reason:
             body["reason"] = reason
+        if language:
+            body["language"] = language
+        if occurred_at:
+            body["occurredAt"] = occurred_at
+        if infer is not None:
+            body["infer"] = infer
+        if speaker_id:
+            body["speakerId"] = speaker_id
+        if speaker_name:
+            body["speakerName"] = speaker_name
         result = self._http._request("POST", "/capture", body=body, response_type=CaptureResponse)
         assert result is not None
         return result
+
+    def get_capture_status(self, capture_id: str) -> Any:
+        """Get queued, processing, completed, or failed state for a capture."""
+        return self._http.get_capture_status(capture_id)
 
     # ── B. Recall ────────────────────────────────────────────
 
@@ -147,6 +188,14 @@ class ConvoMem:
         auto_create: bool | None = None,
         user_name: str | None = None,
         max_tokens: int | None = None,
+        limit: int | None = None,
+        threshold: float | None = None,
+        rerank: bool | None = None,
+        latest_only: bool | None = None,
+        explain: bool | None = None,
+        reference_date: str | None = None,
+        include_agent_facts: bool | None = None,
+        verify: bool | None = None,
     ) -> Any:
         """Recall semantically relevant memories and return a prompt-ready context string.
 
@@ -167,16 +216,27 @@ class ConvoMem:
             extra["autoCreate"] = "true" if auto_create else "false"
         if user_name:
             extra["userName"] = user_name
-        if max_tokens is not None:
-            extra["maxTokens"] = str(max_tokens)
+        extra.update(
+            _lookup_options(
+                max_tokens=max_tokens,
+                limit=limit,
+                threshold=threshold,
+                rerank=rerank,
+                latest_only=latest_only,
+                explain=explain,
+                reference_date=reference_date,
+                include_agent_facts=include_agent_facts,
+                verify=verify,
+            )
+        )
 
         if identity.customer_id:
             # The path route already identifies the customer, so identity params
             # are redundant — but the tuning params must still travel, or a
             # caller passing customer_id would silently lose their max_tokens.
-            path_params = {"topic": topic}
-            if max_tokens is not None:
-                path_params["maxTokens"] = str(max_tokens)
+            path_params = {"topic": topic, **extra}
+            path_params.pop("autoCreate", None)
+            path_params.pop("userName", None)
             result = self._http._request(
                 "GET",
                 f"/customers/{identity.customer_id}/memories/lookup",
@@ -238,6 +298,8 @@ class ConvoMem:
         page: int | None = None,
         limit: int | None = None,
         category: str | None = None,
+        include_expired: bool | None = None,
+        as_of: str | None = None,
     ) -> Any:
         """List all stored memories for a customer with pagination."""
         from convomem._types import MemoryListResponse
@@ -249,15 +311,23 @@ class ConvoMem:
             params["limit"] = str(limit)
         if category:
             params["category"] = category
+        if include_expired is not None:
+            params["includeExpired"] = str(include_expired).lower()
+        if as_of:
+            params["asOf"] = as_of
 
         if identity.customer_id:
             result = self._http._request(
-                "GET", f"/customers/{identity.customer_id}/memories", params=params,
+                "GET",
+                f"/customers/{identity.customer_id}/memories",
+                params=params,
                 response_type=MemoryListResponse,
             )
         else:
             result = self._http._request(
-                "GET", "/customers/memories", params={**params, **_identity_params(identity)},
+                "GET",
+                "/customers/memories",
+                params={**params, **_identity_params(identity)},
                 response_type=MemoryListResponse,
             )
         assert result is not None
@@ -271,6 +341,7 @@ class ConvoMem:
         identity: CustomerIdentity,
         *,
         category: str | None = None,
+        expires_at: str | None = None,
     ) -> Any:
         """Manually insert a memory fact (synchronous — available for recall immediately)."""
         from convomem._types import Memory
@@ -278,15 +349,20 @@ class ConvoMem:
         body: dict[str, Any] = {"content": content}
         if category:
             body["category"] = category
+        if expires_at is not None:
+            body["expiresAt"] = expires_at
 
         if identity.customer_id:
             result = self._http._request(
-                "POST", f"/customers/{identity.customer_id}/memories", body=body,
+                "POST",
+                f"/customers/{identity.customer_id}/memories",
+                body=body,
                 response_type=Memory,
             )
         else:
             result = self._http._request(
-                "POST", "/customers/memories",
+                "POST",
+                "/customers/memories",
                 body={**body, **_identity_body(identity)},
                 response_type=Memory,
             )
@@ -300,6 +376,7 @@ class ConvoMem:
         *,
         content: str | None = None,
         category: str | None = None,
+        expires_at: str | None = None,
     ) -> Any:
         """Update a memory's content or category. Requires ``identity.customer_id``."""
         from convomem._types import Memory
@@ -311,6 +388,8 @@ class ConvoMem:
             body["content"] = content
         if category is not None:
             body["category"] = category
+        if expires_at is not None:
+            body["expiresAt"] = expires_at
         result = self._http._request(
             "PATCH",
             f"/customers/{identity.customer_id}/memories/{memory_id}",
@@ -387,14 +466,16 @@ class ConvoMem:
             params["from"] = from_date
         if to_date:
             params["to"] = to_date
-        result = self._http._request("GET", "/customers", params=params, response_type=CustomerListResponse)
+        result = self._http._request(
+            "GET", "/customers", params=params, response_type=CustomerListResponse
+        )
         assert result is not None
         return result
 
     def get_customer(self, identity: CustomerIdentity) -> Any:
         """Retrieve a single customer profile."""
-        from convomem._types import Customer, CustomerLookupResponse
         from convomem._errors import ConvoMemError
+        from convomem._types import Customer, CustomerLookupResponse
 
         if identity.customer_id:
             result = self._http._request(
@@ -403,7 +484,8 @@ class ConvoMem:
             assert result is not None
             return result
         response = self._http._request(
-            "GET", "/customers/lookup",
+            "GET",
+            "/customers/lookup",
             params=_identity_params(identity),
             response_type=CustomerLookupResponse,
         )
@@ -442,7 +524,8 @@ class ConvoMem:
             )
         else:
             result = self._http._request(
-                "PATCH", "/customers",
+                "PATCH",
+                "/customers",
                 body={**data, **_identity_body(identity)},
                 response_type=Customer,
             )
@@ -455,39 +538,6 @@ class ConvoMem:
             self._http._request("DELETE", f"/customers/{identity.customer_id}")
             return
         self._http._request("DELETE", "/customers", params=_identity_params(identity))
-
-    def list_merge_candidates(self) -> list[Any]:
-        """Return profiles flagged as potential duplicates."""
-        from convomem._types import MergeCandidate
-
-        raw = self._http._request("GET", "/customers/merge-candidates")
-        if not raw:
-            return []
-        return [MergeCandidate.model_validate(item) for item in raw]
-
-    def dismiss_merge_candidate(self, customer_id: str, candidate_id: str) -> None:
-        """Dismiss a duplicate candidate as a false positive."""
-        self._http._request(
-            "POST",
-            f"/customers/{customer_id}/merge-candidates/{candidate_id}/dismiss",
-        )
-
-    def get_stats(self, *, from_date: str | None = None, to_date: str | None = None) -> Any:
-        """Return aggregate customer statistics for the agent this API key is bound to.
-
-        Scoped to that one agent, not the whole organization — a key bound to a
-        different agent returns different numbers for the same organization.
-        """
-        from convomem._types import CustomerStats
-
-        params: dict[str, str] = {}
-        if from_date:
-            params["from"] = from_date
-        if to_date:
-            params["to"] = to_date
-        result = self._http._request("GET", "/customers/stats", params=params, response_type=CustomerStats)
-        assert result is not None
-        return result
 
     # ── E. Conversations ─────────────────────────────────────
 
@@ -507,12 +557,15 @@ class ConvoMem:
 
         if identity.customer_id:
             result = self._http._request(
-                "POST", f"/customers/{identity.customer_id}/conversations",
-                body=body, response_type=Conversation,
+                "POST",
+                f"/customers/{identity.customer_id}/conversations",
+                body=body,
+                response_type=Conversation,
             )
         else:
             result = self._http._request(
-                "POST", "/customers/conversations",
+                "POST",
+                "/customers/conversations",
                 body={**body, **_identity_body(identity)},
                 response_type=Conversation,
             )
@@ -590,12 +643,15 @@ class ConvoMem:
 
         if identity.customer_id:
             result = self._http._request(
-                "GET", f"/customers/{identity.customer_id}/conversations",
-                params=params, response_type=ConversationListResponse,
+                "GET",
+                f"/customers/{identity.customer_id}/conversations",
+                params=params,
+                response_type=ConversationListResponse,
             )
         else:
             result = self._http._request(
-                "GET", "/customers/conversations",
+                "GET",
+                "/customers/conversations",
                 params={**params, **_identity_params(identity)},
                 response_type=ConversationListResponse,
             )
@@ -622,12 +678,15 @@ class ConvoMem:
 
         if identity.customer_id:
             result = self._http._request(
-                "GET", f"/customers/{identity.customer_id}/handoff",
-                params=params, response_type=HandoffResponse,
+                "GET",
+                f"/customers/{identity.customer_id}/handoff",
+                params=params,
+                response_type=HandoffResponse,
             )
         else:
             result = self._http._request(
-                "GET", "/customers/handoff",
+                "GET",
+                "/customers/handoff",
                 params={**params, **_identity_params(identity)},
                 response_type=HandoffResponse,
             )
@@ -646,7 +705,9 @@ class ConvoMem:
         body: dict[str, Any] = {**_identity_body(identity)}
         if ttl_seconds is not None:
             body["ttlSeconds"] = ttl_seconds
-        result = self._http._request("POST", "/embed/tokens", body=body, response_type=EmbedTokenResponse)
+        result = self._http._request(
+            "POST", "/embed/tokens", body=body, response_type=EmbedTokenResponse
+        )
         assert result is not None
         return result
 
@@ -681,7 +742,8 @@ class ConvoMem:
         if format:
             params["format"] = format
         result = self._http._request(
-            "POST", "/handoff/route",
+            "POST",
+            "/handoff/route",
             params=params or None,
             body=_identity_body(identity),
             response_type=HandoffRouteResponse,
@@ -750,8 +812,10 @@ class ConvoMem:
         }
         body = {alias.get(k, k): v for k, v in changes.items() if v is not None}
         result = self._http._request(
-            "PATCH", f"/handoff/destinations/{destination_id}",
-            body=body, response_type=HandoffDestination,
+            "PATCH",
+            f"/handoff/destinations/{destination_id}",
+            body=body,
+            response_type=HandoffDestination,
         )
         assert result is not None
         return result
@@ -770,8 +834,10 @@ class ConvoMem:
         from convomem._types import HandoffRouteResponse
 
         result = self._http._request(
-            "GET", "/handoff/route/preview",
-            params={"customerId": customer_id}, response_type=HandoffRouteResponse,
+            "GET",
+            "/handoff/route/preview",
+            params={"customerId": customer_id},
+            response_type=HandoffRouteResponse,
         )
         assert result is not None
         return result
@@ -812,6 +878,7 @@ class AsyncConvoMem:
         self,
         api_key: str,
         *,
+        base_url: str = "https://api.convomem.com/api/v1",
         timeout: float = 10.0,
         max_retries: int = 3,
         retry_delay: float = 1.0,
@@ -820,6 +887,7 @@ class AsyncConvoMem:
 
         self._http: AsyncConvoMemClient = AsyncConvoMemClient(
             api_key=api_key,
+            base_url=base_url,
             timeout=timeout,
             max_retries=max_retries,
             retry_delay=retry_delay,
@@ -840,6 +908,11 @@ class AsyncConvoMem:
         outcome: str | None = None,
         escalate: bool | None = None,
         reason: str | None = None,
+        language: str | None = None,
+        occurred_at: str | None = None,
+        infer: bool | None = None,
+        speaker_id: str | None = None,
+        speaker_name: str | None = None,
     ) -> Any:
         """Send conversation turns for background memory extraction.
 
@@ -879,9 +952,25 @@ class AsyncConvoMem:
             body["escalate"] = escalate
         if reason:
             body["reason"] = reason
-        result = await self._http._request("POST", "/capture", body=body, response_type=CaptureResponse)
+        if language:
+            body["language"] = language
+        if occurred_at:
+            body["occurredAt"] = occurred_at
+        if infer is not None:
+            body["infer"] = infer
+        if speaker_id:
+            body["speakerId"] = speaker_id
+        if speaker_name:
+            body["speakerName"] = speaker_name
+        result = await self._http._request(
+            "POST", "/capture", body=body, response_type=CaptureResponse
+        )
         assert result is not None
         return result
+
+    async def get_capture_status(self, capture_id: str) -> Any:
+        """Get queued, processing, completed, or failed state for a capture."""
+        return await self._http.get_capture_status(capture_id)
 
     # ── B. Recall ────────────────────────────────────────────
 
@@ -893,6 +982,14 @@ class AsyncConvoMem:
         auto_create: bool | None = None,
         user_name: str | None = None,
         max_tokens: int | None = None,
+        limit: int | None = None,
+        threshold: float | None = None,
+        rerank: bool | None = None,
+        latest_only: bool | None = None,
+        explain: bool | None = None,
+        reference_date: str | None = None,
+        include_agent_facts: bool | None = None,
+        verify: bool | None = None,
     ) -> Any:
         """Recall semantically relevant memories and return a prompt-ready context string.
 
@@ -913,16 +1010,27 @@ class AsyncConvoMem:
             extra["autoCreate"] = "true" if auto_create else "false"
         if user_name:
             extra["userName"] = user_name
-        if max_tokens is not None:
-            extra["maxTokens"] = str(max_tokens)
+        extra.update(
+            _lookup_options(
+                max_tokens=max_tokens,
+                limit=limit,
+                threshold=threshold,
+                rerank=rerank,
+                latest_only=latest_only,
+                explain=explain,
+                reference_date=reference_date,
+                include_agent_facts=include_agent_facts,
+                verify=verify,
+            )
+        )
 
         if identity.customer_id:
             # The path route already identifies the customer, so identity params
             # are redundant — but the tuning params must still travel, or a
             # caller passing customer_id would silently lose their max_tokens.
-            path_params = {"topic": topic}
-            if max_tokens is not None:
-                path_params["maxTokens"] = str(max_tokens)
+            path_params = {"topic": topic, **extra}
+            path_params.pop("autoCreate", None)
+            path_params.pop("userName", None)
             result = await self._http._request(
                 "GET",
                 f"/customers/{identity.customer_id}/memories/lookup",
@@ -984,6 +1092,8 @@ class AsyncConvoMem:
         page: int | None = None,
         limit: int | None = None,
         category: str | None = None,
+        include_expired: bool | None = None,
+        as_of: str | None = None,
     ) -> Any:
         """List all stored memories for a customer with pagination."""
         from convomem._types import MemoryListResponse
@@ -995,15 +1105,22 @@ class AsyncConvoMem:
             params["limit"] = str(limit)
         if category:
             params["category"] = category
+        if include_expired is not None:
+            params["includeExpired"] = str(include_expired).lower()
+        if as_of:
+            params["asOf"] = as_of
 
         if identity.customer_id:
             result = await self._http._request(
-                "GET", f"/customers/{identity.customer_id}/memories", params=params,
+                "GET",
+                f"/customers/{identity.customer_id}/memories",
+                params=params,
                 response_type=MemoryListResponse,
             )
         else:
             result = await self._http._request(
-                "GET", "/customers/memories",
+                "GET",
+                "/customers/memories",
                 params={**params, **_identity_params(identity)},
                 response_type=MemoryListResponse,
             )
@@ -1018,6 +1135,7 @@ class AsyncConvoMem:
         identity: CustomerIdentity,
         *,
         category: str | None = None,
+        expires_at: str | None = None,
     ) -> Any:
         """Manually insert a memory fact (synchronous — available for recall immediately)."""
         from convomem._types import Memory
@@ -1025,15 +1143,20 @@ class AsyncConvoMem:
         body: dict[str, Any] = {"content": content}
         if category:
             body["category"] = category
+        if expires_at is not None:
+            body["expiresAt"] = expires_at
 
         if identity.customer_id:
             result = await self._http._request(
-                "POST", f"/customers/{identity.customer_id}/memories", body=body,
+                "POST",
+                f"/customers/{identity.customer_id}/memories",
+                body=body,
                 response_type=Memory,
             )
         else:
             result = await self._http._request(
-                "POST", "/customers/memories",
+                "POST",
+                "/customers/memories",
                 body={**body, **_identity_body(identity)},
                 response_type=Memory,
             )
@@ -1047,6 +1170,7 @@ class AsyncConvoMem:
         *,
         content: str | None = None,
         category: str | None = None,
+        expires_at: str | None = None,
     ) -> Any:
         """Update a memory's content or category. Requires ``identity.customer_id``."""
         from convomem._types import Memory
@@ -1058,6 +1182,8 @@ class AsyncConvoMem:
             body["content"] = content
         if category is not None:
             body["category"] = category
+        if expires_at is not None:
+            body["expiresAt"] = expires_at
         result = await self._http._request(
             "PATCH",
             f"/customers/{identity.customer_id}/memories/{memory_id}",
@@ -1154,7 +1280,8 @@ class AsyncConvoMem:
             assert result is not None
             return result
         response = await self._http._request(
-            "GET", "/customers/lookup",
+            "GET",
+            "/customers/lookup",
             params=_identity_params(identity),
             response_type=CustomerLookupResponse,
         )
@@ -1193,7 +1320,8 @@ class AsyncConvoMem:
             )
         else:
             result = await self._http._request(
-                "PATCH", "/customers",
+                "PATCH",
+                "/customers",
                 body={**data, **_identity_body(identity)},
                 response_type=Customer,
             )
@@ -1206,41 +1334,6 @@ class AsyncConvoMem:
             await self._http._request("DELETE", f"/customers/{identity.customer_id}")
             return
         await self._http._request("DELETE", "/customers", params=_identity_params(identity))
-
-    async def list_merge_candidates(self) -> list[Any]:
-        """Return profiles flagged as potential duplicates."""
-        from convomem._types import MergeCandidate
-
-        raw = await self._http._request("GET", "/customers/merge-candidates")
-        if not raw:
-            return []
-        return [MergeCandidate.model_validate(item) for item in raw]
-
-    async def dismiss_merge_candidate(self, customer_id: str, candidate_id: str) -> None:
-        """Dismiss a duplicate candidate as a false positive."""
-        await self._http._request(
-            "POST",
-            f"/customers/{customer_id}/merge-candidates/{candidate_id}/dismiss",
-        )
-
-    async def get_stats(self, *, from_date: str | None = None, to_date: str | None = None) -> Any:
-        """Return aggregate customer statistics for the agent this API key is bound to.
-
-        Scoped to that one agent, not the whole organization — a key bound to a
-        different agent returns different numbers for the same organization.
-        """
-        from convomem._types import CustomerStats
-
-        params: dict[str, str] = {}
-        if from_date:
-            params["from"] = from_date
-        if to_date:
-            params["to"] = to_date
-        result = await self._http._request(
-            "GET", "/customers/stats", params=params, response_type=CustomerStats
-        )
-        assert result is not None
-        return result
 
     # ── E. Conversations ─────────────────────────────────────
 
@@ -1260,12 +1353,15 @@ class AsyncConvoMem:
 
         if identity.customer_id:
             result = await self._http._request(
-                "POST", f"/customers/{identity.customer_id}/conversations",
-                body=body, response_type=Conversation,
+                "POST",
+                f"/customers/{identity.customer_id}/conversations",
+                body=body,
+                response_type=Conversation,
             )
         else:
             result = await self._http._request(
-                "POST", "/customers/conversations",
+                "POST",
+                "/customers/conversations",
                 body={**body, **_identity_body(identity)},
                 response_type=Conversation,
             )
@@ -1343,12 +1439,15 @@ class AsyncConvoMem:
 
         if identity.customer_id:
             result = await self._http._request(
-                "GET", f"/customers/{identity.customer_id}/conversations",
-                params=params, response_type=ConversationListResponse,
+                "GET",
+                f"/customers/{identity.customer_id}/conversations",
+                params=params,
+                response_type=ConversationListResponse,
             )
         else:
             result = await self._http._request(
-                "GET", "/customers/conversations",
+                "GET",
+                "/customers/conversations",
                 params={**params, **_identity_params(identity)},
                 response_type=ConversationListResponse,
             )
@@ -1375,12 +1474,15 @@ class AsyncConvoMem:
 
         if identity.customer_id:
             result = await self._http._request(
-                "GET", f"/customers/{identity.customer_id}/handoff",
-                params=params, response_type=HandoffResponse,
+                "GET",
+                f"/customers/{identity.customer_id}/handoff",
+                params=params,
+                response_type=HandoffResponse,
             )
         else:
             result = await self._http._request(
-                "GET", "/customers/handoff",
+                "GET",
+                "/customers/handoff",
                 params={**params, **_identity_params(identity)},
                 response_type=HandoffResponse,
             )
@@ -1436,7 +1538,8 @@ class AsyncConvoMem:
         if format:
             params["format"] = format
         result = await self._http._request(
-            "POST", "/handoff/route",
+            "POST",
+            "/handoff/route",
             params=params or None,
             body=_identity_body(identity),
             response_type=HandoffRouteResponse,
@@ -1448,7 +1551,9 @@ class AsyncConvoMem:
         """List the handoff destinations configured for this agent, default first."""
         from convomem._types import HandoffDestination
 
-        raw = await self._http._request("GET", "/handoff/destinations")
+        raw = await self._http._request(  # type: ignore[func-returns-value]
+            "GET", "/handoff/destinations"
+        )
         if not raw:
             return []
         return [HandoffDestination.model_validate(item) for item in raw]
@@ -1505,8 +1610,10 @@ class AsyncConvoMem:
         }
         body = {alias.get(k, k): v for k, v in changes.items() if v is not None}
         result = await self._http._request(
-            "PATCH", f"/handoff/destinations/{destination_id}",
-            body=body, response_type=HandoffDestination,
+            "PATCH",
+            f"/handoff/destinations/{destination_id}",
+            body=body,
+            response_type=HandoffDestination,
         )
         assert result is not None
         return result
@@ -1525,8 +1632,10 @@ class AsyncConvoMem:
         from convomem._types import HandoffRouteResponse
 
         result = await self._http._request(
-            "GET", "/handoff/route/preview",
-            params={"customerId": customer_id}, response_type=HandoffRouteResponse,
+            "GET",
+            "/handoff/route/preview",
+            params={"customerId": customer_id},
+            response_type=HandoffRouteResponse,
         )
         assert result is not None
         return result

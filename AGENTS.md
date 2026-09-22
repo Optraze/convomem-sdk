@@ -14,7 +14,14 @@ convomem-sdk/
 └── typescript/       # JSR/npm package `@optraze/convomem-sdk` — Deno-native, published for both Deno and npm
 ```
 
-Each language mirrors the same resource surface: `conversations`, `customers`, `embed`, `entities`, `insights`, `memories`, `orgs`, `webhooks`. **A change to one language's resources (new endpoint, new field, new error type) should almost always be mirrored in the other two** unless there's a language-specific reason not to — flag a one-language-only change to the resource surface as likely incomplete.
+Each language mirrors the same **public Integration API** surface: capture,
+customers, memories, conversations, handoff routing, and embed tokens. Internal
+dashboard/admin surfaces such as analytics, exports, request logs, memory
+health, provider settings, organization management, entities, insights, and
+webhooks do not belong in this repository. **A change to one language's public
+surface (new endpoint, new field, new error type) should almost always be
+mirrored in the other two** unless there's a language-specific reason not to —
+flag a one-language-only change as likely incomplete.
 
 ## Python (`python/`)
 

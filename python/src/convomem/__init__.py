@@ -11,6 +11,7 @@ from convomem._errors import (
 from convomem._types import (
     CaptureRequest,
     CaptureResponse,
+    CaptureStatusResponse,
     Conversation,
     ConversationEndRequest,
     ConversationEscalateRequest,
@@ -21,12 +22,9 @@ from convomem._types import (
     CustomerListResponse,
     CustomerLookupParams,
     CustomerLookupResponse,
-    CustomerStats,
     CustomerUpdateRequest,
     EmbedTokenRequest,
     EmbedTokenResponse,
-    FeedbackLookupRequest,
-    FeedbackLookupResponse,
     HandoffParams,
     HandoffResponse,
     JourneyEntry,
@@ -38,7 +36,6 @@ from convomem._types import (
     MemoryListResponse,
     MemoryLookupParams,
     MemoryUpdateRequest,
-    MergeCandidate,
     Message,
     OpenIssue,
     SentimentPoint,
@@ -46,7 +43,7 @@ from convomem._types import (
 )
 from convomem.convomem import AsyncConvoMem, ConvoMem
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - grouped by public API area
     # Primary clients
     "ConvoMem",
     "AsyncConvoMem",
@@ -63,6 +60,7 @@ __all__ = [
     # Capture
     "CaptureRequest",
     "CaptureResponse",
+    "CaptureStatusResponse",
     # Conversations
     "Conversation",
     "ConversationEndRequest",
@@ -74,9 +72,7 @@ __all__ = [
     "CustomerListResponse",
     "CustomerLookupParams",
     "CustomerLookupResponse",
-    "CustomerStats",
     "CustomerUpdateRequest",
-    "MergeCandidate",
     # Embed
     "EmbedTokenRequest",
     "EmbedTokenResponse",
@@ -89,8 +85,6 @@ __all__ = [
     "SentimentPoint",
     "SentimentTrend",
     # Memories
-    "FeedbackLookupRequest",
-    "FeedbackLookupResponse",
     "Memory",
     "MemoryAddRequest",
     "MemoryContext",
@@ -101,4 +95,4 @@ __all__ = [
     "Message",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

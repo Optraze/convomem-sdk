@@ -28,6 +28,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct ConvoMemClient {
     http: reqwest::Client,
     api_key: String,
+    base_url: String,
 }
 
 /// Query parameter list.  Skips `None` values automatically.
@@ -86,7 +87,7 @@ impl ConvoMemClient {
         query: &QueryParams,
         body: Option<&impl serde::Serialize>,
     ) -> Result<T> {
-        let url = format!("{DEFAULT_BASE_URL}{path}");
+        let url = format!("{}{path}", self.base_url);
 
         let mut req = self
             .http
@@ -123,6 +124,12 @@ impl ConvoMemClient {
 
     pub async fn capture(&self, req: &CaptureRequest) -> Result<CaptureResponse> {
         self.request(reqwest::Method::POST, "/capture", &QueryParams::new(), Some(req))
+            .await
+    }
+
+    pub async fn get_capture_status(&self, capture_id: &str) -> Result<CaptureStatusResponse> {
+        let path = format!("/capture/{capture_id}");
+        self.request(reqwest::Method::GET, &path, &QueryParams::new(), None::<&()>)
             .await
     }
 
@@ -195,26 +202,35 @@ impl ConvoMemClient {
         self.request(reqwest::Method::POST, &path, &QueryParams::new(), Some(req)).await
     }
 
-    pub async fn lookup_memories(&self, customer_id: &str, topic: &str) -> Result<MemoryContext> {
+    pub async fn lookup_memories(&self, customer_id: &str, params: &MemoryLookupParams) -> Result<MemoryContext> {
         let path = format!("/customers/{customer_id}/memories/lookup");
-        let query = QueryParams::new().push("topic", topic);
+        let query = params.to_query_params();
         self.request(reqwest::Method::GET, &path, &query, None::<&()>).await
     }
 
     pub async fn lookup_memories_by_identity(&self, params: &MemoryLookupParams) -> Result<MemoryContext> {
-        let query = QueryParams::new()
-            .push("topic", &params.topic)
-            .push_opt("phone", params.phone.as_deref())
-            .push_opt("email", params.email.as_deref())
-            .push_opt("externalId", params.external_id.as_deref());
+        let query = params.to_query_params();
         self.request(reqwest::Method::GET, "/customers/memories/lookup", &query, None::<&()>).await
     }
 
     pub async fn list_memories(&self, customer_id: &str, page: Option<u32>, limit: Option<u32>) -> Result<MemoryListResponse> {
+        self.list_memories_at(customer_id, page, limit, None, None).await
+    }
+
+    pub async fn list_memories_at(
+        &self,
+        customer_id: &str,
+        page: Option<u32>,
+        limit: Option<u32>,
+        include_expired: Option<bool>,
+        as_of: Option<&str>,
+    ) -> Result<MemoryListResponse> {
         let path = format!("/customers/{customer_id}/memories");
         let query = QueryParams::new()
             .push_opt_u32("page", page)
-            .push_opt_u32("limit", limit);
+            .push_opt_u32("limit", limit)
+            .push_opt("includeExpired", include_expired.map(|v| v.to_string()).as_deref())
+            .push_opt("asOf", as_of);
         self.request(reqwest::Method::GET, &path, &query, None::<&()>).await
     }
 
@@ -240,11 +256,6 @@ impl ConvoMemClient {
     pub async fn get_memory(&self, customer_id: &str, mem_id: &str) -> Result<Memory> {
         let path = format!("/customers/{customer_id}/memories/{mem_id}");
         self.request(reqwest::Method::GET, &path, &QueryParams::new(), None::<&()>).await
-    }
-
-    pub async fn lookup_feedback(&self, req: &FeedbackLookupRequest) -> Result<FeedbackLookupResponse> {
-        self.request(reqwest::Method::POST, "/memories/lookup-feedback", &QueryParams::new(), Some(req))
-            .await
     }
 
     // ── Conversations ───────────────────────────────────
@@ -319,6 +330,7 @@ impl ConvoMemClient {
 pub struct ConvoMemClientBuilder {
     api_key: Option<String>,
     timeout: Option<Duration>,
+    base_url: Option<String>,
 }
 
 impl ConvoMemClientBuilder {
@@ -329,6 +341,11 @@ impl ConvoMemClientBuilder {
 
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
+        self
+    }
+
+    pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = Some(base_url.into().trim_end_matches('/').to_string());
         self
     }
 
@@ -345,6 +362,7 @@ impl ConvoMemClientBuilder {
         Ok(ConvoMemClient {
             http: builder.build()?,
             api_key,
+            base_url: self.base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
         })
     }
 }

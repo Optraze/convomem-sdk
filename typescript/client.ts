@@ -9,7 +9,12 @@
  * @module
  */
 
-import type { CaptureRequest, CaptureResponse, ConvoMemConfig } from "./types.ts";
+import type {
+  CaptureRequest,
+  CaptureResponse,
+  CaptureStatusResponse,
+  ConvoMemConfig,
+} from "./types.ts";
 import { ConvoMemApiError, ConvoMemError } from "./errors.ts";
 import { CustomersResource } from "./resources/customers.ts";
 import { MemoriesResource } from "./resources/memories.ts";
@@ -54,6 +59,7 @@ export class ConvoMemClient {
   readonly #timeout: number;
   readonly #maxRetries: number;
   readonly #retryDelay: number;
+  readonly #baseUrl: string;
 
   /** Resource for managing customers. */
   readonly customers: CustomersResource;
@@ -83,6 +89,7 @@ export class ConvoMemClient {
     this.#timeout = config.timeout ?? 30000;
     this.#maxRetries = config.maxRetries ?? 0;
     this.#retryDelay = config.retryDelay ?? 1000;
+    this.#baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
 
     this.customers = new CustomersResource(this);
     this.memories = new MemoriesResource(this);
@@ -135,6 +142,14 @@ export class ConvoMemClient {
     });
   }
 
+  /** Poll an asynchronous capture job. */
+  async getCaptureStatus(captureId: string): Promise<CaptureStatusResponse> {
+    return await this.request<CaptureStatusResponse>(
+      "GET",
+      `/capture/${captureId}`,
+    );
+  }
+
   /**
    * Returns a delay in milliseconds for the given retry attempt, using full
    * jitter (random value between 0 and the linear backoff base) to avoid
@@ -156,7 +171,7 @@ export class ConvoMemClient {
       signal?: AbortSignal;
     },
   ): Promise<T> {
-    const url = new URL(`${DEFAULT_BASE_URL}${path}`);
+    const url = new URL(`${this.#baseUrl}${path}`);
 
     if (options?.params) {
       for (const [key, value] of Object.entries(options.params)) {
@@ -239,6 +254,7 @@ export class ConvoMemClient {
       }
     }
 
-    throw lastError ?? new ConvoMemError("ConvoMem API request failed after retries");
+    throw lastError ??
+      new ConvoMemError("ConvoMem API request failed after retries");
   }
 }

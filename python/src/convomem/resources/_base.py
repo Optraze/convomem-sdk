@@ -38,9 +38,8 @@ class _BaseCustomersResource(_BaseResource):
             params["userName"] = user_name
         return params
 
-def _pagination_params(
-    *, page: int | None = None, limit: int | None = None
-) -> dict[str, str]:
+
+def _pagination_params(*, page: int | None = None, limit: int | None = None) -> dict[str, str]:
     """Build pagination query parameters."""
     params: dict[str, str] = {}
     if page is not None:

@@ -9,7 +9,11 @@
  */
 
 import type { ConvoMemClient } from "../client.ts";
-import type { EmbedTokenRequest, EmbedTokenResponse, HandoffResponse } from "../types.ts";
+import type {
+  EmbedTokenRequest,
+  EmbedTokenResponse,
+  HandoffResponse,
+} from "../types.ts";
 
 /**
  * Resource class for managing embed tokens and handoff context.
@@ -106,9 +110,13 @@ export class EmbedResource {
     token: string,
     opts?: { signal?: AbortSignal },
   ): Promise<HandoffResponse> {
-    return await this.#client.request<HandoffResponse>("GET", "/embed/handoff", {
-      params: { token },
-      signal: opts?.signal,
-    });
+    return await this.#client.request<HandoffResponse>(
+      "GET",
+      "/embed/handoff",
+      {
+        params: { token },
+        signal: opts?.signal,
+      },
+    );
   }
 }
