@@ -30,6 +30,7 @@ pub struct CaptureRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub social_handles: Option<Vec<SocialHandle>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Retry key for the same capture payload and agent (24 hours); changed payloads return 409.
     pub idempotency_key: Option<String>,
     /// Close the conversation as COMPLETED once these turns are persisted.
     ///

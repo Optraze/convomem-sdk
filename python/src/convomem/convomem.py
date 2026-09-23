@@ -132,6 +132,9 @@ class ConvoMem:
         transcript.  Setting the flag here makes persist → close → analyse one
         ordered chain.  The two flags are mutually exclusive; sending both is
         rejected with a 422.
+
+        ``idempotency_key`` deduplicates retries of the same capture for this
+        agent for 24 hours. Reusing it with different content returns 409.
         """
         from convomem._types import CaptureResponse
 

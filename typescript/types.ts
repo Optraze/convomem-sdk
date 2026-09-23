@@ -93,7 +93,7 @@ export interface CaptureRequest {
    * Counts as an identity field in its own right.
    */
   socialHandles?: Array<string | SocialHandle>;
-  /** Idempotency key */
+  /** Retry key for this agent and the same capture payload (24h). Reuse with different content returns 409. */
   idempotencyKey?: string;
   /**
    * Close the conversation as COMPLETED once these turns are persisted.

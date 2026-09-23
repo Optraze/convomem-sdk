@@ -150,7 +150,7 @@ export class ConvoMem {
       escalate?: boolean;
       /** Reason recorded alongside `escalate`. */
       reason?: string;
-      /** Deduplicate retries of the same capture. */
+      /** Deduplicate retries of the same capture for this agent (24h); changed payloads return 409. */
       idempotencyKey?: string;
       language?: string;
       occurredAt?: string;

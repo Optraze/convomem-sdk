@@ -318,7 +318,8 @@
                   },
                   "idempotencyKey": {
                     "type": "string",
-                    "maxLength": 128
+                    "maxLength": 128,
+                    "description": "Retry key scoped to this organization and agent for 24 hours. Reusing it for a different capture request returns 409.\n"
                   },
                   "endConversation": {
                     "type": "boolean",
