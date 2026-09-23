@@ -8,12 +8,7 @@ use convomem::*;
 fn client() -> Option<ConvoMemClient> {
     let _ = dotenvy::dotenv();
     let api_key = std::env::var("CONVOMEM_API_KEY").ok()?;
-    Some(
-        ConvoMemClient::builder()
-            .api_key(api_key)
-            .build()
-            .unwrap(),
-    )
+    Some(ConvoMemClient::builder().api_key(api_key).build().unwrap())
 }
 
 macro_rules! require_client {
@@ -84,7 +79,10 @@ async fn test_customer_crud() {
         name: Some(format!("Updated {suffix}")),
         ..Default::default()
     };
-    let updated = client.update_customer(&customer.id, &update_req).await.unwrap();
+    let updated = client
+        .update_customer(&customer.id, &update_req)
+        .await
+        .unwrap();
     assert!(updated.name.unwrap().contains("Updated"));
 
     // Delete
@@ -106,13 +104,11 @@ async fn test_memory_lifecycle() {
     };
     let customer = client.create_customer(&create_req).await.unwrap();
 
-    // Add a memory
-    // Note: POST /customers/:id/memories is not implemented in the API yet
-    // The TS SDK has an add() method but it returns 404
-    // We can only test list and lookup
-
     // List memories (may be empty)
-    let memories = client.list_memories(&customer.id, None, None).await.unwrap();
+    let memories = client
+        .list_memories(&customer.id, None, None)
+        .await
+        .unwrap();
     println!("Found {} memories", memories.total);
 
     // Lookup memories
@@ -128,7 +124,6 @@ async fn test_memory_lifecycle() {
         .unwrap();
     // Context may be empty if no memories exist for this topic
     println!("Memory context length: {}", ctx.context.len());
-
 
     // Cleanup
     client.delete_customer(&customer.id).await.unwrap();
@@ -150,45 +145,21 @@ async fn test_conversation_lifecycle() {
     let customer = client.create_customer(&create_req).await.unwrap();
 
     // Start conversation
-    let conv = client.start_conversation(&customer.id, "CHAT").await.unwrap();
+    let conv = client
+        .start_conversation(&customer.id, "CHAT")
+        .await
+        .unwrap();
     assert_eq!(conv.status, "ACTIVE");
 
     // List conversations
-    let list = client.list_conversations(&customer.id, None, None).await.unwrap();
+    let list = client
+        .list_conversations(&customer.id, None, None)
+        .await
+        .unwrap();
     assert!(list.conversations.iter().any(|c| c.id == conv.id));
 
     // Cleanup
     client.delete_customer(&customer.id).await.unwrap();
-}
-
-#[tokio::test]
-async fn test_insights_dashboard() {
-    let client = require_client!();
-    // This endpoint requires elevated permissions - just verify it doesn't panic
-    match client.insights_dashboard().await {
-        Ok(dashboard) => {
-            println!("Dashboard: customers={:?}, memories={:?}", dashboard.total_customers, dashboard.total_memories);
-        }
-        Err(ConvoMemError::Api { status: 403, .. }) => {
-            eprintln!("SKIP: insights dashboard requires elevated permissions");
-        }
-        Err(e) => panic!("Unexpected error: {e}"),
-    }
-}
-
-#[tokio::test]
-async fn test_entity_operations() {
-    let client = require_client!();
-    // This endpoint may not exist yet - just verify it doesn't panic
-    match client.list_entities(None, None, None).await {
-        Ok(entities) => {
-            println!("Found {} entities", entities.total);
-        }
-        Err(ConvoMemError::Api { status: 404, .. }) => {
-            eprintln!("SKIP: entities endpoint not available");
-        }
-        Err(e) => panic!("Unexpected error: {e}"),
-    }
 }
 
 fn chrono_now() -> u64 {

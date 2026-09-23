@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{Customer};
+use super::Customer;
 
 #[derive(Debug, Default, Serialize)]
 pub struct HandoffParams {
@@ -21,13 +21,29 @@ pub struct HandoffParams {
 impl HandoffParams {
     pub fn to_query_string(&self) -> String {
         let mut params = Vec::new();
-        if let Some(v) = &self.customer_id { params.push(format!("customerId={v}")); }
-        if let Some(v) = &self.phone { params.push(format!("phone={v}")); }
-        if let Some(v) = &self.email { params.push(format!("email={v}")); }
-        if let Some(v) = &self.external_id { params.push(format!("externalId={v}")); }
-        if let Some(v) = &self.narrative { params.push(format!("narrative={v}")); }
-        if let Some(v) = &self.fresh { params.push(format!("fresh={v}")); }
-        if params.is_empty() { String::new() } else { format!("?{}", params.join("&")) }
+        if let Some(v) = &self.customer_id {
+            params.push(format!("customerId={v}"));
+        }
+        if let Some(v) = &self.phone {
+            params.push(format!("phone={v}"));
+        }
+        if let Some(v) = &self.email {
+            params.push(format!("email={v}"));
+        }
+        if let Some(v) = &self.external_id {
+            params.push(format!("externalId={v}"));
+        }
+        if let Some(v) = &self.narrative {
+            params.push(format!("narrative={v}"));
+        }
+        if let Some(v) = &self.fresh {
+            params.push(format!("fresh={v}"));
+        }
+        if params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", params.join("&"))
+        }
     }
 }
 

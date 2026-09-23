@@ -61,12 +61,21 @@ impl MemoryLookupParams {
             .push_opt("externalId", self.external_id.as_deref())
             .push_opt_u32("maxTokens", self.max_tokens)
             .push_opt_u32("limit", self.limit)
-            .push_opt("threshold", self.threshold.map(|v| v.to_string()).as_deref())
+            .push_opt(
+                "threshold",
+                self.threshold.map(|v| v.to_string()).as_deref(),
+            )
             .push_opt("rerank", self.rerank.map(|v| v.to_string()).as_deref())
-            .push_opt("latestOnly", self.latest_only.map(|v| v.to_string()).as_deref())
+            .push_opt(
+                "latestOnly",
+                self.latest_only.map(|v| v.to_string()).as_deref(),
+            )
             .push_opt("explain", self.explain.map(|v| v.to_string()).as_deref())
             .push_opt("referenceDate", self.reference_date.as_deref())
-            .push_opt("includeAgentFacts", self.include_agent_facts.map(|v| v.to_string()).as_deref())
+            .push_opt(
+                "includeAgentFacts",
+                self.include_agent_facts.map(|v| v.to_string()).as_deref(),
+            )
             .push_opt("verify", self.verify.map(|v| v.to_string()).as_deref())
     }
 }

@@ -12,22 +12,33 @@ use crate::types::*;
 
 fn identity_body_params(id: &CustomerIdentity) -> Vec<(&'static str, serde_json::Value)> {
     let mut v = Vec::new();
-    if let Some(s) = &id.customer_id  { v.push(("customerId",  serde_json::json!(s))); }
-    if let Some(s) = &id.external_id  { v.push(("externalId",  serde_json::json!(s))); }
-    if let Some(s) = &id.email        { v.push(("email",        serde_json::json!(s))); }
-    if let Some(s) = &id.phone        { v.push(("phone",        serde_json::json!(s))); }
+    if let Some(s) = &id.customer_id {
+        v.push(("customerId", serde_json::json!(s)));
+    }
+    if let Some(s) = &id.external_id {
+        v.push(("externalId", serde_json::json!(s)));
+    }
+    if let Some(s) = &id.email {
+        v.push(("email", serde_json::json!(s)));
+    }
+    if let Some(s) = &id.phone {
+        v.push(("phone", serde_json::json!(s)));
+    }
     v
 }
 
 fn identity_query(id: &CustomerIdentity) -> QueryParams {
     QueryParams::new()
-        .push_opt("customerId",  id.customer_id.as_deref())
-        .push_opt("externalId",  id.external_id.as_deref())
-        .push_opt("email",       id.email.as_deref())
-        .push_opt("phone",       id.phone.as_deref())
+        .push_opt("customerId", id.customer_id.as_deref())
+        .push_opt("externalId", id.external_id.as_deref())
+        .push_opt("email", id.email.as_deref())
+        .push_opt("phone", id.phone.as_deref())
 }
 
-fn merge_into(mut base: serde_json::Value, extra: Vec<(&'static str, serde_json::Value)>) -> serde_json::Value {
+fn merge_into(
+    mut base: serde_json::Value,
+    extra: Vec<(&'static str, serde_json::Value)>,
+) -> serde_json::Value {
     if let Some(obj) = base.as_object_mut() {
         for (k, v) in extra {
             obj.insert(k.to_string(), v);
@@ -42,7 +53,7 @@ fn merge_into(mut base: serde_json::Value, extra: Vec<(&'static str, serde_json:
 ///
 /// # Example
 /// ```no_run
-/// use convomem::{ConvoMem, CustomerIdentity};
+/// use convomem::{ConvoMem, CustomerIdentity, Message};
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -52,6 +63,7 @@ fn merge_into(mut base: serde_json::Value, extra: Vec<(&'static str, serde_json:
 ///     let ctx = client.lookup(
 ///         "billing question",
 ///         &CustomerIdentity::from_email("alice@example.com"),
+///         None,
 ///         None,
 ///         None,
 ///     ).await.unwrap();
@@ -78,7 +90,9 @@ pub struct ConvoMem {
 impl ConvoMem {
     /// Create a new client with the given API key and default settings.
     pub fn new(api_key: impl Into<String>) -> Self {
-        Self { client: ConvoMemClient::new(api_key) }
+        Self {
+            client: ConvoMemClient::new(api_key),
+        }
     }
 
     /// Create a builder for custom timeout configuration.
@@ -111,7 +125,14 @@ impl ConvoMem {
             idempotency_key: idempotency_key.map(str::to_string),
             ..Default::default()
         };
-        self.client.request(reqwest::Method::POST, "/capture", &QueryParams::new(), Some(&req)).await
+        self.client
+            .request(
+                reqwest::Method::POST,
+                "/capture",
+                &QueryParams::new(),
+                Some(&req),
+            )
+            .await
     }
 
     /// Capture with the full request payload.
@@ -141,7 +162,14 @@ impl ConvoMem {
     /// # Ok(()) }
     /// ```
     pub async fn capture_with(&self, req: &CaptureRequest) -> Result<CaptureResponse> {
-        self.client.request(reqwest::Method::POST, "/capture", &QueryParams::new(), Some(req)).await
+        self.client
+            .request(
+                reqwest::Method::POST,
+                "/capture",
+                &QueryParams::new(),
+                Some(req),
+            )
+            .await
     }
 
     /// Get queued, processing, completed, or failed state for a capture.
@@ -182,14 +210,23 @@ impl ConvoMem {
                 .push_opt("autoCreate", auto_str)
                 .push_opt("userName", user_name)
                 .push_opt_u32("maxTokens", max_tokens);
-            self.client.request(reqwest::Method::GET, &path, &query, None::<&()>).await
+            self.client
+                .request(reqwest::Method::GET, &path, &query, None::<&()>)
+                .await
         } else {
             let query = identity_query(identity)
                 .push("topic", topic)
                 .push_opt("autoCreate", auto_str)
                 .push_opt("userName", user_name)
                 .push_opt_u32("maxTokens", max_tokens);
-            self.client.request(reqwest::Method::GET, "/customers/memories/lookup", &query, None::<&()>).await
+            self.client
+                .request(
+                    reqwest::Method::GET,
+                    "/customers/memories/lookup",
+                    &query,
+                    None::<&()>,
+                )
+                .await
         }
     }
 
@@ -234,7 +271,14 @@ impl ConvoMem {
             .push_opt("autoCreate", auto_str)
             .push_opt("userName", user_name)
             .push_opt_u32("maxTokens", max_tokens);
-        self.client.request(reqwest::Method::GET, "/customers/lookup", &query, None::<&()>).await
+        self.client
+            .request(
+                reqwest::Method::GET,
+                "/customers/lookup",
+                &query,
+                None::<&()>,
+            )
+            .await
     }
 
     /// List all stored memories for a customer with pagination.
@@ -252,13 +296,22 @@ impl ConvoMem {
 
         if let Some(id) = &identity.customer_id {
             let path = format!("/customers/{id}/memories");
-            self.client.request(reqwest::Method::GET, &path, &extra, None::<&()>).await
+            self.client
+                .request(reqwest::Method::GET, &path, &extra, None::<&()>)
+                .await
         } else {
             let query = identity_query(identity)
                 .push_opt_u32("page", page)
                 .push_opt_u32("limit", limit)
                 .push_opt("category", category);
-            self.client.request(reqwest::Method::GET, "/customers/memories", &query, None::<&()>).await
+            self.client
+                .request(
+                    reqwest::Method::GET,
+                    "/customers/memories",
+                    &query,
+                    None::<&()>,
+                )
+                .await
         }
     }
 
@@ -278,10 +331,24 @@ impl ConvoMem {
 
         if let Some(id) = &identity.customer_id {
             let path = format!("/customers/{id}/memories");
-            self.client.request(reqwest::Method::POST, &path, &QueryParams::new(), Some(&body)).await
+            self.client
+                .request(
+                    reqwest::Method::POST,
+                    &path,
+                    &QueryParams::new(),
+                    Some(&body),
+                )
+                .await
         } else {
             let body = merge_into(body, identity_body_params(identity));
-            self.client.request(reqwest::Method::POST, "/customers/memories", &QueryParams::new(), Some(&body)).await
+            self.client
+                .request(
+                    reqwest::Method::POST,
+                    "/customers/memories",
+                    &QueryParams::new(),
+                    Some(&body),
+                )
+                .await
         }
     }
 
@@ -297,23 +364,37 @@ impl ConvoMem {
             ConvoMemError::Config("update_memory requires identity.customer_id".into())
         })?;
         let mut body = serde_json::json!({});
-        if let Some(c) = content  { body["content"]  = serde_json::json!(c); }
-        if let Some(c) = category { body["category"] = serde_json::json!(c); }
+        if let Some(c) = content {
+            body["content"] = serde_json::json!(c);
+        }
+        if let Some(c) = category {
+            body["category"] = serde_json::json!(c);
+        }
         let path = format!("/customers/{id}/memories/{memory_id}");
-        self.client.request(reqwest::Method::PATCH, &path, &QueryParams::new(), Some(&body)).await
+        self.client
+            .request(
+                reqwest::Method::PATCH,
+                &path,
+                &QueryParams::new(),
+                Some(&body),
+            )
+            .await
     }
 
     /// Permanently delete a memory. Requires `identity.customer_id`.
-    pub async fn delete_memory(
-        &self,
-        memory_id: &str,
-        identity: &CustomerIdentity,
-    ) -> Result<()> {
+    pub async fn delete_memory(&self, memory_id: &str, identity: &CustomerIdentity) -> Result<()> {
         let id = identity.customer_id.as_deref().ok_or_else(|| {
             ConvoMemError::Config("delete_memory requires identity.customer_id".into())
         })?;
         let path = format!("/customers/{id}/memories/{memory_id}");
-        self.client.request::<serde_json::Value>(reqwest::Method::DELETE, &path, &QueryParams::new(), None::<&()>).await?;
+        self.client
+            .request::<serde_json::Value>(
+                reqwest::Method::DELETE,
+                &path,
+                &QueryParams::new(),
+                None::<&()>,
+            )
+            .await?;
         Ok(())
     }
 
@@ -321,7 +402,14 @@ impl ConvoMem {
 
     /// Create a new customer profile.
     pub async fn create_customer(&self, req: &CustomerCreateRequest) -> Result<Customer> {
-        self.client.request(reqwest::Method::POST, "/customers", &QueryParams::new(), Some(req)).await
+        self.client
+            .request(
+                reqwest::Method::POST,
+                "/customers",
+                &QueryParams::new(),
+                Some(req),
+            )
+            .await
     }
 
     /// Return a paginated, filterable list of customers.
@@ -335,20 +423,38 @@ impl ConvoMem {
             .push_opt_u32("page", page)
             .push_opt_u32("limit", limit)
             .push_opt("search", search);
-        self.client.request(reqwest::Method::GET, "/customers", &query, None::<&()>).await
+        self.client
+            .request(reqwest::Method::GET, "/customers", &query, None::<&()>)
+            .await
     }
 
     /// Retrieve a single customer profile. Performs a lookup if no `customer_id`.
     pub async fn get_customer(&self, identity: &CustomerIdentity) -> Result<Customer> {
         if let Some(id) = &identity.customer_id {
             let path = format!("/customers/{id}");
-            self.client.request(reqwest::Method::GET, &path, &QueryParams::new(), None::<&()>).await
+            self.client
+                .request(
+                    reqwest::Method::GET,
+                    &path,
+                    &QueryParams::new(),
+                    None::<&()>,
+                )
+                .await
         } else {
             let query = identity_query(identity);
-            let resp: CustomerLookupResponse = self.client
-                .request(reqwest::Method::GET, "/customers/lookup", &query, None::<&()>)
+            let resp: CustomerLookupResponse = self
+                .client
+                .request(
+                    reqwest::Method::GET,
+                    "/customers/lookup",
+                    &query,
+                    None::<&()>,
+                )
                 .await?;
-            resp.customer.ok_or_else(|| ConvoMemError::Api { status: 404, message: "Customer not found".into() })
+            resp.customer.ok_or_else(|| ConvoMemError::Api {
+                status: 404,
+                message: "Customer not found".into(),
+            })
         }
     }
 
@@ -360,7 +466,14 @@ impl ConvoMem {
     ) -> Result<Customer> {
         if let Some(id) = &identity.customer_id {
             let path = format!("/customers/{id}");
-            self.client.request(reqwest::Method::PATCH, &path, &QueryParams::new(), Some(req)).await
+            self.client
+                .request(
+                    reqwest::Method::PATCH,
+                    &path,
+                    &QueryParams::new(),
+                    Some(req),
+                )
+                .await
         } else {
             // Flat route: merge identity fields into the update body
             let mut body = serde_json::to_value(req).unwrap_or_default();
@@ -369,7 +482,14 @@ impl ConvoMem {
                     obj.insert(k.to_string(), v);
                 }
             }
-            self.client.request(reqwest::Method::PATCH, "/customers", &QueryParams::new(), Some(&body)).await
+            self.client
+                .request(
+                    reqwest::Method::PATCH,
+                    "/customers",
+                    &QueryParams::new(),
+                    Some(&body),
+                )
+                .await
         }
     }
 
@@ -377,10 +497,24 @@ impl ConvoMem {
     pub async fn delete_customer(&self, identity: &CustomerIdentity) -> Result<()> {
         if let Some(id) = &identity.customer_id {
             let path = format!("/customers/{id}");
-            self.client.request::<serde_json::Value>(reqwest::Method::DELETE, &path, &QueryParams::new(), None::<&()>).await?;
+            self.client
+                .request::<serde_json::Value>(
+                    reqwest::Method::DELETE,
+                    &path,
+                    &QueryParams::new(),
+                    None::<&()>,
+                )
+                .await?;
         } else {
             let query = identity_query(identity);
-            self.client.request::<serde_json::Value>(reqwest::Method::DELETE, "/customers", &query, None::<&()>).await?;
+            self.client
+                .request::<serde_json::Value>(
+                    reqwest::Method::DELETE,
+                    "/customers",
+                    &query,
+                    None::<&()>,
+                )
+                .await?;
         }
         Ok(())
     }
@@ -397,10 +531,24 @@ impl ConvoMem {
 
         if let Some(id) = &identity.customer_id {
             let path = format!("/customers/{id}/conversations");
-            self.client.request(reqwest::Method::POST, &path, &QueryParams::new(), Some(&body)).await
+            self.client
+                .request(
+                    reqwest::Method::POST,
+                    &path,
+                    &QueryParams::new(),
+                    Some(&body),
+                )
+                .await
         } else {
             let body = merge_into(body, identity_body_params(identity));
-            self.client.request(reqwest::Method::POST, "/customers/conversations", &QueryParams::new(), Some(&body)).await
+            self.client
+                .request(
+                    reqwest::Method::POST,
+                    "/customers/conversations",
+                    &QueryParams::new(),
+                    Some(&body),
+                )
+                .await
         }
     }
 
@@ -414,15 +562,33 @@ impl ConvoMem {
         if let (Some(conv_id), Some(cust_id)) = (conversation_id, identity.customer_id.as_deref()) {
             let path = format!("/customers/{cust_id}/conversations/{conv_id}");
             let body = outcome.map(|o| serde_json::json!({ "outcome": o }));
-            self.client.request::<serde_json::Value>(reqwest::Method::PATCH, &path, &QueryParams::new(), body.as_ref()).await?;
+            self.client
+                .request::<serde_json::Value>(
+                    reqwest::Method::PATCH,
+                    &path,
+                    &QueryParams::new(),
+                    body.as_ref(),
+                )
+                .await?;
         } else {
             let mut body = serde_json::json!({});
             for (k, v) in identity_body_params(identity) {
                 body[k] = v;
             }
-            if let Some(conv_id) = conversation_id { body["conversationId"] = serde_json::json!(conv_id); }
-            if let Some(o) = outcome { body["outcome"] = serde_json::json!(o); }
-            self.client.request::<serde_json::Value>(reqwest::Method::POST, "/customers/conversations/end", &QueryParams::new(), Some(&body)).await?;
+            if let Some(conv_id) = conversation_id {
+                body["conversationId"] = serde_json::json!(conv_id);
+            }
+            if let Some(o) = outcome {
+                body["outcome"] = serde_json::json!(o);
+            }
+            self.client
+                .request::<serde_json::Value>(
+                    reqwest::Method::POST,
+                    "/customers/conversations/end",
+                    &QueryParams::new(),
+                    Some(&body),
+                )
+                .await?;
         }
         Ok(())
     }
@@ -437,15 +603,33 @@ impl ConvoMem {
         if let (Some(conv_id), Some(cust_id)) = (conversation_id, identity.customer_id.as_deref()) {
             let path = format!("/customers/{cust_id}/conversations/{conv_id}/escalate");
             let body = reason.map(|r| serde_json::json!({ "reason": r }));
-            self.client.request::<serde_json::Value>(reqwest::Method::PATCH, &path, &QueryParams::new(), body.as_ref()).await?;
+            self.client
+                .request::<serde_json::Value>(
+                    reqwest::Method::PATCH,
+                    &path,
+                    &QueryParams::new(),
+                    body.as_ref(),
+                )
+                .await?;
         } else {
             let mut body = serde_json::json!({});
             for (k, v) in identity_body_params(identity) {
                 body[k] = v;
             }
-            if let Some(conv_id) = conversation_id { body["conversationId"] = serde_json::json!(conv_id); }
-            if let Some(r) = reason { body["reason"] = serde_json::json!(r); }
-            self.client.request::<serde_json::Value>(reqwest::Method::POST, "/customers/conversations/escalate", &QueryParams::new(), Some(&body)).await?;
+            if let Some(conv_id) = conversation_id {
+                body["conversationId"] = serde_json::json!(conv_id);
+            }
+            if let Some(r) = reason {
+                body["reason"] = serde_json::json!(r);
+            }
+            self.client
+                .request::<serde_json::Value>(
+                    reqwest::Method::POST,
+                    "/customers/conversations/escalate",
+                    &QueryParams::new(),
+                    Some(&body),
+                )
+                .await?;
         }
         Ok(())
     }
@@ -464,13 +648,22 @@ impl ConvoMem {
                 .push_opt_u32("page", page)
                 .push_opt_u32("limit", limit)
                 .push_opt("status", status);
-            self.client.request(reqwest::Method::GET, &path, &query, None::<&()>).await
+            self.client
+                .request(reqwest::Method::GET, &path, &query, None::<&()>)
+                .await
         } else {
             let query = identity_query(identity)
                 .push_opt_u32("page", page)
                 .push_opt_u32("limit", limit)
                 .push_opt("status", status);
-            self.client.request(reqwest::Method::GET, "/customers/conversations", &query, None::<&()>).await
+            self.client
+                .request(
+                    reqwest::Method::GET,
+                    "/customers/conversations",
+                    &query,
+                    None::<&()>,
+                )
+                .await
         }
     }
 
@@ -483,7 +676,7 @@ impl ConvoMem {
         fresh: Option<bool>,
         narrative: Option<bool>,
     ) -> Result<HandoffResponse> {
-        let fresh_str     = fresh.map(|v| if v { "true" } else { "false" });
+        let fresh_str = fresh.map(|v| if v { "true" } else { "false" });
         let narrative_str = narrative.map(|v| if v { "true" } else { "false" });
 
         if let Some(id) = &identity.customer_id {
@@ -491,12 +684,21 @@ impl ConvoMem {
             let query = QueryParams::new()
                 .push_opt("fresh", fresh_str)
                 .push_opt("narrative", narrative_str);
-            self.client.request(reqwest::Method::GET, &path, &query, None::<&()>).await
+            self.client
+                .request(reqwest::Method::GET, &path, &query, None::<&()>)
+                .await
         } else {
             let query = identity_query(identity)
                 .push_opt("fresh", fresh_str)
                 .push_opt("narrative", narrative_str);
-            self.client.request(reqwest::Method::GET, "/customers/handoff", &query, None::<&()>).await
+            self.client
+                .request(
+                    reqwest::Method::GET,
+                    "/customers/handoff",
+                    &query,
+                    None::<&()>,
+                )
+                .await
         }
     }
 
@@ -531,12 +733,21 @@ impl ConvoMem {
             phone: identity.phone.clone(),
         };
         let query = QueryParams::new().push_opt("format", format);
-        self.client.request(reqwest::Method::POST, "/handoff/route", &query, Some(&req)).await
+        self.client
+            .request(reqwest::Method::POST, "/handoff/route", &query, Some(&req))
+            .await
     }
 
     /// List the handoff destinations configured for this agent, default first.
     pub async fn list_handoff_destinations(&self) -> Result<Vec<HandoffDestination>> {
-        self.client.request(reqwest::Method::GET, "/handoff/destinations", &QueryParams::new(), None::<&()>).await
+        self.client
+            .request(
+                reqwest::Method::GET,
+                "/handoff/destinations",
+                &QueryParams::new(),
+                None::<&()>,
+            )
+            .await
     }
 
     /// Create a handoff destination for this agent.
@@ -550,7 +761,14 @@ impl ConvoMem {
         &self,
         req: &HandoffDestinationRequest,
     ) -> Result<HandoffDestination> {
-        self.client.request(reqwest::Method::POST, "/handoff/destinations", &QueryParams::new(), Some(req)).await
+        self.client
+            .request(
+                reqwest::Method::POST,
+                "/handoff/destinations",
+                &QueryParams::new(),
+                Some(req),
+            )
+            .await
     }
 
     /// Update a handoff destination.
@@ -563,7 +781,14 @@ impl ConvoMem {
         req: &HandoffDestinationRequest,
     ) -> Result<HandoffDestination> {
         let path = format!("/handoff/destinations/{destination_id}");
-        self.client.request(reqwest::Method::PATCH, &path, &QueryParams::new(), Some(req)).await
+        self.client
+            .request(
+                reqwest::Method::PATCH,
+                &path,
+                &QueryParams::new(),
+                Some(req),
+            )
+            .await
     }
 
     /// Delete a handoff destination.
@@ -573,14 +798,28 @@ impl ConvoMem {
     /// nothing to fall back to.
     pub async fn delete_handoff_destination(&self, destination_id: &str) -> Result<()> {
         let path = format!("/handoff/destinations/{destination_id}");
-        self.client.request::<serde_json::Value>(reqwest::Method::DELETE, &path, &QueryParams::new(), None::<&()>).await?;
+        self.client
+            .request::<serde_json::Value>(
+                reqwest::Method::DELETE,
+                &path,
+                &QueryParams::new(),
+                None::<&()>,
+            )
+            .await?;
         Ok(())
     }
 
     /// Preview the resolution a live transfer would receive, without transferring.
     pub async fn preview_handoff_route(&self, customer_id: &str) -> Result<HandoffRouteResponse> {
         let query = QueryParams::new().push("customerId", customer_id);
-        self.client.request(reqwest::Method::GET, "/handoff/route/preview", &query, None::<&()>).await
+        self.client
+            .request(
+                reqwest::Method::GET,
+                "/handoff/route/preview",
+                &query,
+                None::<&()>,
+            )
+            .await
     }
 
     /// Mint a short-lived read-only embed token for the ConvoMem agent panel.
@@ -596,7 +835,14 @@ impl ConvoMem {
             phone: identity.phone.clone(),
             ttl_seconds,
         };
-        self.client.request(reqwest::Method::POST, "/embed/tokens", &QueryParams::new(), Some(&req)).await
+        self.client
+            .request(
+                reqwest::Method::POST,
+                "/embed/tokens",
+                &QueryParams::new(),
+                Some(&req),
+            )
+            .await
     }
 }
 
@@ -625,6 +871,8 @@ impl ConvoMemBuilder {
     }
 
     pub fn build(self) -> Result<ConvoMem> {
-        Ok(ConvoMem { client: self.inner.build()? })
+        Ok(ConvoMem {
+            client: self.inner.build()?,
+        })
     }
 }

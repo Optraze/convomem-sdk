@@ -17,16 +17,28 @@ pub struct CustomerIdentity {
 
 impl CustomerIdentity {
     pub fn from_id(customer_id: impl Into<String>) -> Self {
-        Self { customer_id: Some(customer_id.into()), ..Default::default() }
+        Self {
+            customer_id: Some(customer_id.into()),
+            ..Default::default()
+        }
     }
     pub fn from_email(email: impl Into<String>) -> Self {
-        Self { email: Some(email.into()), ..Default::default() }
+        Self {
+            email: Some(email.into()),
+            ..Default::default()
+        }
     }
     pub fn from_phone(phone: impl Into<String>) -> Self {
-        Self { phone: Some(phone.into()), ..Default::default() }
+        Self {
+            phone: Some(phone.into()),
+            ..Default::default()
+        }
     }
     pub fn from_external_id(external_id: impl Into<String>) -> Self {
-        Self { external_id: Some(external_id.into()), ..Default::default() }
+        Self {
+            external_id: Some(external_id.into()),
+            ..Default::default()
+        }
     }
 }
 
@@ -58,15 +70,35 @@ pub struct CustomerLookupParams {
 impl CustomerLookupParams {
     pub fn to_query_string(&self) -> String {
         let mut params = Vec::new();
-        if let Some(v) = &self.customer_id { params.push(format!("customerId={v}")); }
-        if let Some(v) = &self.phone { params.push(format!("phone={v}")); }
-        if let Some(v) = &self.email { params.push(format!("email={v}")); }
-        if let Some(v) = &self.external_id { params.push(format!("externalId={v}")); }
-        if let Some(v) = &self.topic { params.push(format!("topic={v}")); }
-        if let Some(v) = &self.max_tokens { params.push(format!("maxTokens={v}")); }
-        if let Some(v) = &self.auto_create { params.push(format!("autoCreate={v}")); }
-        if let Some(v) = &self.user_name { params.push(format!("userName={v}")); }
-        if params.is_empty() { String::new() } else { format!("?{}", params.join("&")) }
+        if let Some(v) = &self.customer_id {
+            params.push(format!("customerId={v}"));
+        }
+        if let Some(v) = &self.phone {
+            params.push(format!("phone={v}"));
+        }
+        if let Some(v) = &self.email {
+            params.push(format!("email={v}"));
+        }
+        if let Some(v) = &self.external_id {
+            params.push(format!("externalId={v}"));
+        }
+        if let Some(v) = &self.topic {
+            params.push(format!("topic={v}"));
+        }
+        if let Some(v) = &self.max_tokens {
+            params.push(format!("maxTokens={v}"));
+        }
+        if let Some(v) = &self.auto_create {
+            params.push(format!("autoCreate={v}"));
+        }
+        if let Some(v) = &self.user_name {
+            params.push(format!("userName={v}"));
+        }
+        if params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", params.join("&"))
+        }
     }
 }
 
