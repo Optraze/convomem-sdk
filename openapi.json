@@ -216,6 +216,8 @@
                   },
                   "messages": {
                     "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
                     "description": "Full conversation turns including assistant replies. Required if message not provided.",
                     "items": {
                       "type": "object",
@@ -234,7 +236,9 @@
                           ]
                         },
                         "content": {
-                          "type": "string"
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 10000
                         },
                         "language": {
                           "type": "string",
@@ -2169,6 +2173,8 @@
                 "properties": {
                   "messages": {
                     "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
                     "items": {
                       "type": "object",
                       "required": [
@@ -2186,7 +2192,9 @@
                           ]
                         },
                         "content": {
-                          "type": "string"
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 10000
                         },
                         "language": {
                           "type": "string",
