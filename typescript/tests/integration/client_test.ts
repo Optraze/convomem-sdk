@@ -1,28 +1,22 @@
 import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertExists, assertNotEquals } from "@std/assert";
-import { load, parse } from "@bearz/dotenv";
 import { ConvoMemClient } from "../../mod.ts";
 
-// Load .env file into Deno.env
-try {
-  const content = await Deno.readTextFile("../.env");
-  load(parse(content));
-} catch {
-  // .env file may not exist; rely on environment variables
-}
-
+// Destructive live fixtures must target an explicitly selected environment.
 const API_KEY = Deno.env.get("CONVOMEM_API_KEY");
+const BASE_URL = Deno.env.get("CONVOMEM_BASE_URL");
 describe({
   name: "ConvoMemClient Integration",
-  ignore: !API_KEY,
+  ignore: !API_KEY || !BASE_URL,
   fn: () => {
     let client: ConvoMemClient;
     let customerId: string;
+    const customerEmail = `test-${crypto.randomUUID()}@example.com`;
 
     beforeAll(() => {
       client = new ConvoMemClient({
         apiKey: API_KEY!,
-        baseUrl: Deno.env.get("CONVOMEM_BASE_URL"),
+        baseUrl: BASE_URL!,
       });
     });
 
@@ -30,7 +24,7 @@ describe({
       it("creates a new customer", async () => {
         const customer = await client.customers.create({
           name: "Test User",
-          email: `test-${Date.now()}@example.com`,
+          email: customerEmail,
           phone: `+1555${String(Date.now()).slice(-7)}`,
           metadata: { source: "sdk-test" },
         });
@@ -62,9 +56,9 @@ describe({
 
       it("looks up customer by email", async () => {
         const result = await client.customers.lookup({
-          email: `test-${Date.now() - 1000}@example.com`,
+          email: customerEmail,
         });
-        assertExists(result.found);
+        assertEquals(result.found, true);
       });
     });
 
@@ -139,7 +133,9 @@ describe({
 
     describe("Handoff", () => {
       it("gets handoff context by customer ID", async () => {
-        const result = await client.customers.handoffById(customerId);
+        const result = await client.customers.handoffById(customerId, {
+          narrative: "false",
+        });
         assertExists(result.found);
       });
     });

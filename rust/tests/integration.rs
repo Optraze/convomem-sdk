@@ -1,26 +1,19 @@
 //! Integration tests for the ConvoMem SDK.
 //!
-//! Reads CONVOMEM_API_KEY from .env (auto-discovered via dotenvy) or environment.
-//! Skips gracefully if no key is found.
+//! Requires explicit CONVOMEM_API_KEY and CONVOMEM_BASE_URL.
+//! Opt in with `cargo test --test integration -- --ignored --test-threads=1`.
 
 use convomem::*;
 
-fn client() -> Option<ConvoMemClient> {
-    let _ = dotenvy::dotenv();
-    let api_key = std::env::var("CONVOMEM_API_KEY").ok()?;
-    Some(ConvoMemClient::builder().api_key(api_key).build().unwrap())
-}
-
-macro_rules! require_client {
-    () => {
-        match client() {
-            Some(c) => c,
-            None => {
-                eprintln!("SKIP: CONVOMEM_API_KEY not set, skipping integration test");
-                return;
-            }
-        }
-    };
+fn client() -> ConvoMemClient {
+    let api_key = std::env::var("CONVOMEM_API_KEY").expect("Explicit integration API key required");
+    let base_url =
+        std::env::var("CONVOMEM_BASE_URL").expect("Explicit integration base URL required");
+    ConvoMemClient::builder()
+        .api_key(api_key)
+        .base_url(base_url)
+        .build()
+        .unwrap()
 }
 
 fn unique_suffix() -> String {
@@ -28,8 +21,9 @@ fn unique_suffix() -> String {
 }
 
 #[tokio::test]
+#[ignore = "requires explicit integration credentials and target URL"]
 async fn test_capture_roundtrip() {
-    let client = require_client!();
+    let client = client();
 
     let req = CaptureRequest {
         message: Some("Integration test message".to_string()),
@@ -50,8 +44,9 @@ async fn test_capture_roundtrip() {
 }
 
 #[tokio::test]
+#[ignore = "requires explicit integration credentials and target URL"]
 async fn test_customer_crud() {
-    let client = require_client!();
+    let client = client();
     let suffix = unique_suffix();
 
     // Create
@@ -90,8 +85,9 @@ async fn test_customer_crud() {
 }
 
 #[tokio::test]
+#[ignore = "requires explicit integration credentials and target URL"]
 async fn test_memory_lifecycle() {
-    let client = require_client!();
+    let client = client();
     let suffix = unique_suffix();
 
     // Create a customer with external_id (required by API)
@@ -130,8 +126,9 @@ async fn test_memory_lifecycle() {
 }
 
 #[tokio::test]
+#[ignore = "requires explicit integration credentials and target URL"]
 async fn test_conversation_lifecycle() {
-    let client = require_client!();
+    let client = client();
     let suffix = unique_suffix();
 
     // Create a customer with email (required by API)

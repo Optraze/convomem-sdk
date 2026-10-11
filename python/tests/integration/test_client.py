@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,16 +12,21 @@ from convomem import (
     CustomerCreateRequest,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 pytestmark = pytest.mark.integration
 
 API_KEY = os.environ.get("CONVOMEM_API_KEY")
+BASE_URL = os.environ.get("CONVOMEM_BASE_URL")
 
 
 @pytest.fixture
-def client() -> ConvoMemClient:
-    if not API_KEY:
-        pytest.skip("CONVOMEM_API_KEY not set")
-    return ConvoMemClient(api_key=API_KEY)
+def client() -> Iterator[ConvoMemClient]:
+    if not API_KEY or not BASE_URL:
+        pytest.skip("Explicit CONVOMEM_API_KEY and CONVOMEM_BASE_URL required")
+    with ConvoMemClient(api_key=API_KEY, base_url=BASE_URL) as live_client:
+        yield live_client
 
 
 def _unique_suffix() -> str:

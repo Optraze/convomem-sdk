@@ -61,6 +61,14 @@ deno task test:integration  # hits a real/mocked API, --allow-read for fixtures
 
 ## Cross-cutting conventions
 
+- Live integration tests require both `CONVOMEM_API_KEY` and
+  `CONVOMEM_BASE_URL` explicitly in the process environment. They create/delete
+  synthetic customer fixtures; never silently default these tests to the cloud
+  or auto-load an `.env` that could override a selected target. Use isolated local
+  stores. Python/TypeScript skip without both values; Rust marks its four live
+  tests ignored and requires `cargo test --test integration -- --ignored
+  --test-threads=1` to opt in. Ignored/skipped is not live integration proof.
+
 - **API key handling**: every language's client takes an `api_key`/`apiKey` — never log it, never include it in an error message's string representation, never write it to a fixture/test-recording file in plaintext (use a placeholder like `sk-org-test...` in tests, matching existing test fixtures).
 - Error types should map API error responses (org-scoped `sk-org-` key auth, rate limits, validation errors) consistently across languages — check `_errors.py` (Python), the error enum (Rust), and `errors.ts` (TypeScript) stay conceptually aligned when adding a new API error case.
 - This is a published package in all three ecosystems — a breaking change to a public method signature needs a version bump (see each language's own versioning: `pyproject.toml`, `Cargo.toml`, `deno.json`), not a silent change.
