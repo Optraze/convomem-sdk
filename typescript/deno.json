@@ -18,6 +18,7 @@
   },
   "publish": {
     "include": [
+      "README.md",
       "mod.ts",
       "convomem.ts",
       "client.ts",

@@ -34,9 +34,9 @@ export interface ConvoMemConfig {
   baseUrl?: string;
   /** Custom fetch implementation (for testing or Deno Deploy) */
   fetch?: typeof globalThis.fetch;
-  /** Request timeout in milliseconds (default: 30000) */
+  /** Request timeout in milliseconds (default: 10000 for `ConvoMem`, 30000 for `ConvoMemClient`) */
   timeout?: number;
-  /** Maximum number of retries for failed requests (default: 0) */
+  /** Maximum number of retries for failed requests (default: 3 for `ConvoMem`, 0 for `ConvoMemClient`) */
   maxRetries?: number;
   /** Delay between retries in milliseconds (default: 1000) */
   retryDelay?: number;
