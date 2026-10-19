@@ -222,3 +222,4 @@ dist
 
 rust/target
 .serena
+.DS_Store

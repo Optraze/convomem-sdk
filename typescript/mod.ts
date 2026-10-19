@@ -11,7 +11,7 @@
  *
  * @example
  * ```ts
- * import { ConvoMem } from "convomem";
+ * import { ConvoMem } from "@optraze/convomem-sdk";
  *
  * const client = new ConvoMem({ apiKey: process.env.CONVOMEM_API_KEY });
  *

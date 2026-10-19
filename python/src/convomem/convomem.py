@@ -506,7 +506,7 @@ class ConvoMem:
         external_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> Any:
-        """Update an existing customer profile. Metadata is merged with existing values."""
+        """Update an existing customer profile. ``metadata`` replaces the stored object."""
         from convomem._types import Customer
 
         data: dict[str, Any] = {}
@@ -749,97 +749,6 @@ class ConvoMem:
             "/handoff/route",
             params=params or None,
             body=_identity_body(identity),
-            response_type=HandoffRouteResponse,
-        )
-        assert result is not None
-        return result
-
-    def list_handoff_destinations(self) -> list[Any]:
-        """List the handoff destinations configured for this agent, default first."""
-        from convomem._types import HandoffDestination
-
-        raw = self._http._request("GET", "/handoff/destinations")
-        if not raw:
-            return []
-        return [HandoffDestination.model_validate(item) for item in raw]
-
-    def create_handoff_destination(
-        self,
-        *,
-        name: str,
-        type: Literal["PHONE", "SIP"],
-        value: str,
-        description: str | None = None,
-        transfer_message: str | None = None,
-        is_default: bool | None = None,
-        is_active: bool | None = None,
-    ) -> Any:
-        """Create a handoff destination for this agent.
-
-        The first destination you create becomes the default automatically —
-        routing always needs somewhere to fall back to.  Write ``description``
-        as a plain-English rule: it is the text the model reads when choosing
-        between destinations, so "repeat callers with unresolved billing
-        issues" routes far better than "Tier 2".
-        """
-        from convomem._types import HandoffDestination
-
-        body: dict[str, Any] = {"name": name, "type": type, "value": value}
-        if description:
-            body["description"] = description
-        if transfer_message:
-            body["transferMessage"] = transfer_message
-        if is_default is not None:
-            body["isDefault"] = is_default
-        if is_active is not None:
-            body["isActive"] = is_active
-        result = self._http._request(
-            "POST", "/handoff/destinations", body=body, response_type=HandoffDestination
-        )
-        assert result is not None
-        return result
-
-    def update_handoff_destination(self, destination_id: str, **changes: Any) -> Any:
-        """Update a handoff destination.
-
-        Accepts the same fields as :meth:`create_handoff_destination`, in
-        snake_case.  Editing a destination redirects live phone calls, so this
-        requires organization write access, not just an agent-scoped key.
-        """
-        from convomem._types import HandoffDestination
-
-        alias = {
-            "transfer_message": "transferMessage",
-            "is_default": "isDefault",
-            "is_active": "isActive",
-        }
-        body = {alias.get(k, k): v for k, v in changes.items() if v is not None}
-        result = self._http._request(
-            "PATCH",
-            f"/handoff/destinations/{destination_id}",
-            body=body,
-            response_type=HandoffDestination,
-        )
-        assert result is not None
-        return result
-
-    def delete_handoff_destination(self, destination_id: str) -> None:
-        """Delete a handoff destination.
-
-        Refuses to delete the default while other destinations still exist —
-        promote another destination to default first, or routing would have
-        nothing to fall back to.
-        """
-        self._http._request("DELETE", f"/handoff/destinations/{destination_id}")
-
-    def preview_handoff_route(self, customer_id: str) -> Any:
-        """Preview the resolution a live transfer would receive, without transferring."""
-        from convomem._types import HandoffRouteResponse
-
-        result = self._http._request(
-            "GET",
-            "/handoff/route/preview",
-            params={"customerId": customer_id},
             response_type=HandoffRouteResponse,
         )
         assert result is not None
@@ -1545,99 +1454,6 @@ class AsyncConvoMem:
             "/handoff/route",
             params=params or None,
             body=_identity_body(identity),
-            response_type=HandoffRouteResponse,
-        )
-        assert result is not None
-        return result
-
-    async def list_handoff_destinations(self) -> list[Any]:
-        """List the handoff destinations configured for this agent, default first."""
-        from convomem._types import HandoffDestination
-
-        raw = await self._http._request(  # type: ignore[func-returns-value]
-            "GET", "/handoff/destinations"
-        )
-        if not raw:
-            return []
-        return [HandoffDestination.model_validate(item) for item in raw]
-
-    async def create_handoff_destination(
-        self,
-        *,
-        name: str,
-        type: Literal["PHONE", "SIP"],
-        value: str,
-        description: str | None = None,
-        transfer_message: str | None = None,
-        is_default: bool | None = None,
-        is_active: bool | None = None,
-    ) -> Any:
-        """Create a handoff destination for this agent.
-
-        The first destination you create becomes the default automatically —
-        routing always needs somewhere to fall back to.  Write ``description``
-        as a plain-English rule: it is the text the model reads when choosing
-        between destinations, so "repeat callers with unresolved billing
-        issues" routes far better than "Tier 2".
-        """
-        from convomem._types import HandoffDestination
-
-        body: dict[str, Any] = {"name": name, "type": type, "value": value}
-        if description:
-            body["description"] = description
-        if transfer_message:
-            body["transferMessage"] = transfer_message
-        if is_default is not None:
-            body["isDefault"] = is_default
-        if is_active is not None:
-            body["isActive"] = is_active
-        result = await self._http._request(
-            "POST", "/handoff/destinations", body=body, response_type=HandoffDestination
-        )
-        assert result is not None
-        return result
-
-    async def update_handoff_destination(self, destination_id: str, **changes: Any) -> Any:
-        """Update a handoff destination.
-
-        Accepts the same fields as :meth:`create_handoff_destination`, in
-        snake_case.  Editing a destination redirects live phone calls, so this
-        requires organization write access, not just an agent-scoped key.
-        """
-        from convomem._types import HandoffDestination
-
-        alias = {
-            "transfer_message": "transferMessage",
-            "is_default": "isDefault",
-            "is_active": "isActive",
-        }
-        body = {alias.get(k, k): v for k, v in changes.items() if v is not None}
-        result = await self._http._request(
-            "PATCH",
-            f"/handoff/destinations/{destination_id}",
-            body=body,
-            response_type=HandoffDestination,
-        )
-        assert result is not None
-        return result
-
-    async def delete_handoff_destination(self, destination_id: str) -> None:
-        """Delete a handoff destination.
-
-        Refuses to delete the default while other destinations still exist —
-        promote another destination to default first, or routing would have
-        nothing to fall back to.
-        """
-        await self._http._request("DELETE", f"/handoff/destinations/{destination_id}")
-
-    async def preview_handoff_route(self, customer_id: str) -> Any:
-        """Preview the resolution a live transfer would receive, without transferring."""
-        from convomem._types import HandoffRouteResponse
-
-        result = await self._http._request(
-            "GET",
-            "/handoff/route/preview",
-            params={"customerId": customer_id},
             response_type=HandoffRouteResponse,
         )
         assert result is not None

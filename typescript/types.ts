@@ -360,7 +360,7 @@ export interface CustomerUpdateRequest {
   phone?: string;
   /** External system identifier */
   externalId?: string;
-  /** Arbitrary metadata key-value pairs (merged with existing) */
+  /** Arbitrary metadata key-value pairs. Replaces the stored metadata object; send every key you want to keep. */
   metadata?: Record<string, unknown>;
 }
 
@@ -434,7 +434,7 @@ export interface HandoffResponse {
     /** Most recent sentiment score, or null if unavailable */
     current: number | null;
     /** Optional array of historical sentiment data points */
-    points?: Array<{ timestamp: string; score: number }>;
+    points?: Array<{ at: string; channel: string; sentiment: number }>;
   };
   /** Current open issue status */
   openIssue: {
@@ -448,7 +448,7 @@ export interface HandoffResponse {
   /** LLM-generated narrative summary, or null if unavailable */
   narrative: string | null;
   /** Source of the narrative: "llm", "fallback", or "skipped" */
-  narrativeSource: "llm" | "fallback" | "skipped";
+  narrativeSource: "llm" | "fallback" | "skipped" | "pending";
   /** ISO 8601 timestamp of when this handoff was generated */
   generatedAt?: string;
   /** Whether this response was served from cache */
@@ -824,38 +824,6 @@ export interface HandoffDestination {
  *
  * The first destination created for an agent becomes its default
  * automatically — resolution always needs somewhere to fall back to.
- */
-export interface HandoffDestinationCreateRequest {
-  /** Human-readable name */
-  name: string;
-  /** Transport type */
-  type: "PHONE" | "SIP";
-  /** E.164 number for PHONE, or a sip:/sips: URI for SIP */
-  value: string;
-  /** When handoffs should go here — this is what the model reads */
-  description?: string;
-  /** Spoken to the caller just before the transfer connects */
-  transferMessage?: string;
-  /** Promote this destination to the agent's default */
-  isDefault?: boolean;
-  /** Defaults to true */
-  isActive?: boolean;
-}
-
-/**
- * Request payload for updating a handoff destination. All fields optional.
- */
-export type HandoffDestinationUpdateRequest = Partial<
-  HandoffDestinationCreateRequest
->;
-
-/**
- * Which tier answered a routing request.
- *
- * - `memory` — a decision made from this customer's history
- * - `default` — the agent's fallback destination
- * - `none` — no destination is configured at all
- * - `invalid_request` — no usable identity was supplied
  */
 export type HandoffRouteSource =
   | "memory"

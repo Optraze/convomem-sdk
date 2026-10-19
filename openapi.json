@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:8000/api/v1"
+      "url": "https://api.convomem.com/api/v1"
     }
   ],
   "components": {
@@ -958,7 +958,7 @@
     "/customers/handoff": {
       "get": {
         "summary": "Cross-channel agent handoff context",
-        "description": "Synthesizes a customer's full cross-channel journey (chat, email, voice, SMS) into a single briefing for a human agent taking over: a chronological journey timeline, key memories, sentiment trend, open-issue detection, and an AI-written narrative summary.\n\nIdentify the customer by internal UUID, phone, email, or external ID — exactly like /customers/lookup. The customer is never auto-created.\n\n**narrative=false** skips the AI-written briefing (fast, structured data only). **fresh=true** bypasses the 10-minute cache.\n",
+        "description": "Synthesizes a customer's full cross-channel journey (chat, email, voice, SMS) into a single briefing for a human agent taking over: a chronological journey timeline, key memories, sentiment trend, open-issue detection, and an AI-written narrative summary.\n\nIdentify the customer by internal UUID, phone, email, or external ID — exactly like /customers/lookup. The customer is never auto-created.\n\n**narrative=false** skips the AI-written briefing (fast, structured data only). **fresh=true** bypasses the cached brief (24 hours by default).\n",
         "tags": [
           "Customers"
         ],
@@ -1167,8 +1167,10 @@
                       "enum": [
                         "llm",
                         "fallback",
-                        "skipped"
-                      ]
+                        "skipped",
+                        "pending"
+                      ],
+                      "description": "`pending` means the deterministic fallback is returned now while the AI narrative is generated for the next read.\n"
                     }
                   }
                 },
@@ -2615,9 +2617,6 @@
                           "category": {
                             "type": "string"
                           },
-                          "importance": {
-                            "type": "number"
-                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -3354,123 +3353,6 @@
         }
       }
     },
-    "/handoff/destinations": {
-      "get": {
-        "summary": "List handoff destinations for the current agent",
-        "tags": [
-          "Handoff Routing"
-        ],
-        "responses": {
-          "200": {
-            "description": "Destinations, default first"
-          }
-        }
-      },
-      "post": {
-        "summary": "Create a handoff destination",
-        "description": "The first destination created for an agent becomes the default automatically — resolution always needs somewhere to fall back to.\n",
-        "tags": [
-          "Handoff Routing"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name",
-                  "type",
-                  "value"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "example": "Senior Support"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "PHONE",
-                      "SIP"
-                    ]
-                  },
-                  "value": {
-                    "type": "string",
-                    "example": "+15551234567"
-                  },
-                  "description": {
-                    "type": "string",
-                    "description": "When should handoffs go here? This is what the AI reads when choosing.",
-                    "example": "Repeat callers with unresolved billing issues, or anyone who has escalated before."
-                  },
-                  "transferMessage": {
-                    "type": "string",
-                    "description": "Optional line spoken to the caller before the transfer connects."
-                  },
-                  "isDefault": {
-                    "type": "boolean"
-                  },
-                  "isActive": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created"
-          }
-        }
-      }
-    },
-    "/handoff/destinations/{id}": {
-      "patch": {
-        "summary": "Update a handoff destination",
-        "tags": [
-          "Handoff Routing"
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Updated"
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete a handoff destination",
-        "description": "Refuses to delete the default while other destinations exist — promote another destination to default first.\n",
-        "tags": [
-          "Handoff Routing"
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Deleted"
-          }
-        }
-      }
-    },
     "/handoff/route": {
       "post": {
         "summary": "Resolve where a customer's handoff should go",
@@ -3580,28 +3462,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/handoff/route/preview": {
-      "get": {
-        "summary": "Preview where a customer would be routed (dashboard test panel)",
-        "tags": [
-          "Handoff Routing"
-        ],
-        "parameters": [
-          {
-            "in": "query",
-            "name": "customerId",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The resolution that a live transfer would receive"
           }
         }
       }

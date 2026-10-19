@@ -255,7 +255,7 @@ class CustomerUpdateRequest(BaseModel):
     """External system identifier."""
 
     metadata: dict[str, Any] | None = Field(default=None, alias="metadata")
-    """Arbitrary metadata key-value pairs (merged with existing)."""
+    """Arbitrary metadata key-value pairs. Replaces the stored metadata object."""
 
 
 class CustomerLookupParams(BaseModel):
@@ -434,10 +434,13 @@ class SentimentPoint(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    timestamp: str
-    """ISO 8601 timestamp of the data point."""
+    at: str | None = Field(default=None, alias="at")
+    """ISO 8601 start time of the conversation this point comes from."""
 
-    score: float
+    channel: str | None = Field(default=None, alias="channel")
+    """Channel of that conversation, such as VOICE or CHAT."""
+
+    sentiment: float
     """Sentiment score (-1.0 to 1.0)."""
 
     count: int | None = Field(default=None, alias="count")
@@ -546,8 +549,11 @@ class HandoffResponse(BaseModel):
     narrative: str | None = Field(default=None, alias="narrative")
     """LLM-generated narrative summary, or None if unavailable."""
 
-    narrative_source: Literal["llm", "fallback", "skipped"] = Field(alias="narrativeSource")
-    """Source of the narrative: "llm", "fallback", or "skipped"."""
+    narrative_source: Literal["llm", "fallback", "skipped", "pending"] = Field(
+        alias="narrativeSource"
+    )
+    """Source of the narrative: "llm", "fallback", "skipped", or "pending" (the
+    fallback is returned now while the AI narrative is generated for the next read)."""
 
     generated_at: str | None = Field(default=None, alias="generatedAt")
     """ISO 8601 timestamp of when this handoff was generated."""

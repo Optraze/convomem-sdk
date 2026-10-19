@@ -38,3 +38,10 @@ embedding was stubbed: this is compatibility/isolation proof, not an extraction
 quality or paid-provider benchmark. Dashboard-only export/analytics APIs are
 intentionally absent from SDKs. MCP is a separate hosted tool surface, not an
 extra REST SDK method.
+
+19 October: handoff destination management (`/handoff/destinations*`) and route
+preview (`/handoff/route/preview`) were removed from `openapi.json` and all three
+SDKs. They need dashboard agent/org permissions, so every organization API key
+received 403. The public spec now has 22 paths and the production server URL;
+`routeHandoff` remains. Handoff `narrativeSource` now includes `pending`. The
+TypeScript and Python suites pass; the Rust change is not yet compiled here.

@@ -23,9 +23,6 @@ import type {
   CustomerLookupResponse,
   CustomerUpdateRequest,
   EmbedTokenResponse,
-  HandoffDestination,
-  HandoffDestinationCreateRequest,
-  HandoffDestinationUpdateRequest,
   HandoffResponse,
   HandoffRouteResponse,
   Memory,
@@ -602,7 +599,7 @@ export class ConvoMem {
    * Update an existing customer profile.
    *
    * Uses `PATCH /customers/:id` (UUID) or `PATCH /customers` (flat identity in body).
-   * Metadata is merged with existing values.
+   * `metadata` replaces the stored metadata object; send every key you want to keep.
    *
    * @param identity - Any one identifier.
    * @param data - Fields to update.
@@ -860,7 +857,7 @@ export class ConvoMem {
    * before transferring to a human.
    *
    * @param identity - Any one identifier.
-   * @param options - `fresh` bypasses the 10-min cache; `narrative: false` skips the LLM summary.
+   * @param options - `fresh` bypasses the cached brief (24 hours by default); `narrative: false` skips the LLM summary.
    * @returns Structured briefing with journey, memories, sentiment, and narrative.
    *
    * @example
@@ -962,105 +959,6 @@ export class ConvoMem {
           phone: identity.phone,
         },
       },
-    );
-  }
-
-  /**
-   * List the handoff destinations configured for this agent, default first.
-   *
-   * @returns Every destination, active and inactive.
-   *
-   * @example
-   * ```ts
-   * const destinations = await client.listHandoffDestinations();
-   * ```
-   */
-  async listHandoffDestinations(): Promise<HandoffDestination[]> {
-    return await this.#http.request<HandoffDestination[]>(
-      "GET",
-      "/handoff/destinations",
-    );
-  }
-
-  /**
-   * Create a handoff destination for this agent.
-   *
-   * The first destination you create becomes the default automatically —
-   * routing always needs somewhere to fall back to. Write `description` as a
-   * plain-English rule: it is the text the model reads when choosing between
-   * destinations, so "repeat callers with unresolved billing issues" routes
-   * far better than "Tier 2".
-   *
-   * @param destination - Name, transport, value, and the routing description.
-   * @returns The created destination.
-   *
-   * @example
-   * ```ts
-   * await client.createHandoffDestination({
-   *   name: "Senior Support",
-   *   type: "PHONE",
-   *   value: "+15551234567",
-   *   description: "Repeat callers with unresolved billing issues, or anyone who has escalated before.",
-   *   transferMessage: "Let me put you through to a senior specialist.",
-   * });
-   * ```
-   */
-  async createHandoffDestination(
-    destination: HandoffDestinationCreateRequest,
-  ): Promise<HandoffDestination> {
-    return await this.#http.request<HandoffDestination>(
-      "POST",
-      "/handoff/destinations",
-      { body: destination },
-    );
-  }
-
-  /**
-   * Update a handoff destination.
-   *
-   * Editing a destination redirects live phone calls, so this requires
-   * organization write access, not just an agent-scoped key.
-   *
-   * @param id - Destination identifier.
-   * @param changes - Fields to change.
-   * @returns The updated destination.
-   */
-  async updateHandoffDestination(
-    id: string,
-    changes: HandoffDestinationUpdateRequest,
-  ): Promise<HandoffDestination> {
-    return await this.#http.request<HandoffDestination>(
-      "PATCH",
-      `/handoff/destinations/${id}`,
-      { body: changes },
-    );
-  }
-
-  /**
-   * Delete a handoff destination.
-   *
-   * Refuses to delete the default while other destinations still exist —
-   * promote another destination to default first, or routing would have
-   * nothing to fall back to.
-   *
-   * @param id - Destination identifier.
-   */
-  async deleteHandoffDestination(id: string): Promise<void> {
-    await this.#http.request<void>("DELETE", `/handoff/destinations/${id}`);
-  }
-
-  /**
-   * Preview the resolution a live transfer would receive for a customer,
-   * without performing one.
-   *
-   * @param customerId - The customer to resolve.
-   * @returns The same shape {@link ConvoMem.routeHandoff} would return.
-   */
-  async previewHandoffRoute(customerId: string): Promise<HandoffRouteResponse> {
-    return await this.#http.request<HandoffRouteResponse>(
-      "GET",
-      "/handoff/route/preview",
-      { params: { customerId } },
     );
   }
 
